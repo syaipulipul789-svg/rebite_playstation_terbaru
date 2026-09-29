@@ -1,0 +1,252 @@
+@import 'tailwindcss';
+
+@theme {
+    --font-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-mono: ui-monospace, 'SFMono-Regular', 'Cascadia Code', monospace;
+
+    --color-brand-50: #eef4ff;
+    --color-brand-100: #dae5ff;
+    --color-brand-200: #bdd2ff;
+    --color-brand-300: #90b4ff;
+    --color-brand-400: #5c8bff;
+    --color-brand-500: #3b62fb;
+    --color-brand-600: #2a3ff0;
+    --color-brand-700: #212cce;
+    --color-brand-800: #2127a6;
+    --color-brand-900: #1f2882;
+    --color-brand-950: #161b51;
+
+    --color-neon-400: #22d3ee;
+    --color-neon-500: #06b6d4;
+    --color-neon-600: #0891b2;
+
+    --color-ink-950: #06070d;
+    --color-ink-900: #0a0c14;
+    --color-ink-850: #0e1019;
+    --color-ink-800: #12151f;
+    --color-ink-750: #171a26;
+    --color-ink-700: #1d2130;
+    --color-ink-600: #262b3d;
+}
+
+@layer base {
+    html {
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+        @apply bg-ink-950 text-slate-200 antialiased;
+        font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    }
+
+    /* Scrollbar dark */
+    ::-webkit-scrollbar {
+        width: 10px;
+        height: 10px;
+    }
+    ::-webkit-scrollbar-track {
+        @apply bg-ink-900;
+    }
+    ::-webkit-scrollbar-thumb {
+        @apply rounded-full bg-ink-600;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+        @apply bg-ink-700;
+    }
+
+    [x-cloak] {
+        display: none !important;
+    }
+}
+
+/* Angka tabular untuk kolom rupiah & timer */
+@utility tabular {
+    font-variant-numeric: tabular-nums;
+}
+
+@layer components {
+    .card {
+        @apply rounded-2xl border border-white/5 bg-ink-850/80 backdrop-blur-sm;
+    }
+
+    .card-hover {
+        @apply transition duration-200 hover:border-white/15 hover:bg-ink-800;
+    }
+
+    /* Tabel dense untuk halaman master data & laporan */
+    .table-compact {
+        @apply w-full border-collapse text-left;
+    }
+
+    .table-compact thead th {
+        @apply border-b border-white/5 px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-slate-500;
+    }
+
+    .table-compact tbody td {
+        @apply border-b border-white/5 px-4 py-3 text-sm text-slate-300;
+    }
+
+    .table-compact tbody tr {
+        @apply transition hover:bg-white/[0.03];
+    }
+
+    .table-compact tbody tr:last-child td {
+        @apply border-b-0;
+    }
+
+    .input {
+        @apply w-full rounded-xl border border-white/10 bg-ink-900 px-3.5 py-2.5 text-sm text-slate-100
+               placeholder:text-slate-600 focus:border-brand-500/60 focus:outline-none focus:ring-2
+               focus:ring-brand-500/25;
+    }
+
+    .label {
+        @apply mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-400;
+    }
+
+    .badge {
+        @apply inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold;
+    }
+
+    .th {
+        @apply px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500;
+    }
+
+    .td {
+        @apply px-4 py-3 text-sm text-slate-300;
+    }
+
+    /* Timer countdown monospace besar */
+    .timer-digits {
+        @apply tabular font-mono text-3xl font-bold tracking-tight;
+    }
+
+    .grid-noise {
+        background-image:
+            radial-gradient(circle at 1px 1px, rgb(255 255 255 / 0.04) 1px, transparent 0);
+        background-size: 24px 24px;
+    }
+}
+
+/*
+ * Tailwind v4 hanya mengizinkan @apply terhadap utility yang didaftarkan lewat
+ * @utility — bukan class biasa di dalam @layer components. Karena itu semua
+ * varian tombol di bawah ditulis sebagai @utility agar bisa saling @apply.
+ */
+@utility btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold
+           transition duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2
+           focus:ring-offset-ink-950 disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+@utility btn-primary {
+    @apply btn bg-brand-500 text-white hover:bg-brand-400 focus:ring-brand-500/50;
+}
+
+@utility btn-success {
+    @apply btn bg-emerald-500 text-emerald-950 hover:bg-emerald-400 focus:ring-emerald-500/50;
+}
+
+@utility btn-danger {
+    @apply btn bg-rose-500 text-white hover:bg-rose-400 focus:ring-rose-500/50;
+}
+
+@utility btn-warning {
+    @apply btn bg-amber-500 text-amber-950 hover:bg-amber-400 focus:ring-amber-500/50;
+}
+
+@utility btn-ghost {
+    @apply btn border border-white/10 bg-white/5 text-slate-200 hover:bg-white/10 focus:ring-white/20;
+}
+
+@utility btn-subtle {
+    @apply btn px-3 py-1.5 text-xs text-slate-400 hover:bg-white/5 hover:text-slate-100 focus:ring-white/20;
+}
+
+@utility btn-sm {
+    @apply px-3 py-1.5 text-xs;
+}
+
+@layer utilities {
+    @keyframes pulse-ring {
+        0% {
+            box-shadow: 0 0 0 0 rgb(244 63 94 / 0.45);
+        }
+        70% {
+            box-shadow: 0 0 0 14px rgb(244 63 94 / 0);
+        }
+        100% {
+            box-shadow: 0 0 0 0 rgb(244 63 94 / 0);
+        }
+    }
+
+    .animate-pulse-ring {
+        animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+
+    @keyframes toast-in {
+        from {
+            opacity: 0;
+            transform: translateY(-8px) scale(0.98);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+        }
+    }
+
+    .animate-toast-in {
+        animation: toast-in 180ms ease-out;
+    }
+
+    @keyframes flash {
+        0%,
+        100% {
+            background-color: rgb(245 158 11 / 0.12);
+        }
+        50% {
+            background-color: rgb(245 158 11 / 0.32);
+        }
+    }
+
+    .animate-flash {
+        animation: flash 1s ease-in-out infinite;
+    }
+}
+
+@media print {
+    body {
+        background: #fff !important;
+        color: #000 !important;
+    }
+
+    aside,
+    header.sticky,
+    footer,
+    .no-print,
+    [x-cloak] {
+        display: none !important;
+    }
+
+    main {
+        padding: 0 !important;
+    }
+
+    .card {
+        border: 1px solid #d4d4d8 !important;
+        background: #fff !important;
+        color: #000 !important;
+        box-shadow: none !important;
+    }
+
+    .text-slate-400,
+    .text-slate-500,
+    .text-slate-600,
+    .text-brand-300 {
+        color: #52525b !important;
+    }
+
+    .text-white {
+        color: #000 !important;
+    }
+}
