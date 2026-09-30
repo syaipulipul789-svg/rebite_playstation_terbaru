@@ -1,8 +1,9 @@
 <?php
 
-use App\Enums\ShiftStatus;
 use App\Http\Controllers\Api\RentalSessionController;
 use App\Http\Controllers\Api\UnitController as ApiUnitController;
+use App\Http\Controllers\CustomerDisplayController;
+use App\Http\Controllers\CustomerOrderController;
 use App\Http\Controllers\Owner\OwnerDashboardController;
 use App\Http\Controllers\Owner\ProductMasterController;
 use App\Http\Controllers\Owner\RatePackageController;
@@ -12,33 +13,56 @@ use App\Http\Controllers\Owner\UserController;
 use App\Http\Controllers\PosController;
 use App\Http\Controllers\ShiftController;
 use App\Http\Controllers\UnitGridController;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 /*
 |--------------------------------------------------------------------------
 | Public
 |--------------------------------------------------------------------------
-| Halaman awal harus(role) aware supaya tidak memantulkan user yang sudah
-| login ke halaman `login`: Owner -> dashboard, kasir dengan shift aktif ->
-| grid unit, kasir tanpa shift -> input modal awal.
+| Tampilan Pelanggan (Public View) tanpa login: landing page di `/` dan live
+| monitor layar TV di `/display`. Untuk user yang sudah login, `index()` tetap
+| mengalihkan ke halaman internal sesuai role (Owner -> dashboard, kasir ->
+| grid unit / gatekeeper shift).
 */
-Route::get('/', function (Request $request) {
-    if (! $request->user()) {
-        return redirect()->route('login');
-    }
+Route::get('/', [CustomerDisplayController::class, 'index'])->name('customer.home');
+Route::get('/display', [CustomerDisplayController::class, 'liveDisplay'])->name('customer.display');
+Route::get('/display/data', [CustomerDisplayController::class, 'displayData'])->name('customer.display.data');
 
-    if ($request->user()->isOwner()) {
-        return redirect()->route('owner.dashboard');
-    }
+// Reservasi online publik (tanpa auth). Dibatasi 12 permintaan/menit per IP
+// karena endpoint ini menulis ke database tanpa login.
+Route::post('/booking', [CustomerDisplayController::class, 'storeBooking'])
+    ->middleware('throttle:12,1')
+    ->name('booking.store');
 
-    $hasOpenShift = $request->user()
-        ->shifts()
-        ->where('status', ShiftStatus::OPEN)
-        ->exists();
+// Status booking milik session browser ini (dipakai polling halaman publik).
+Route::get('/booking/status', [CustomerDisplayController::class, 'bookingStatus'])
+    ->middleware('throttle:60,1')
+    ->name('booking.status');
 
-    return redirect()->route($hasOpenShift ? 'units.index' : 'shift.start');
-})->name('home');
+// Cek status booking dari perangkat mana pun (butuh kode + nomor WhatsApp).
+Route::get('/cek-status', [CustomerDisplayController::class, 'checkStatus'])->name('booking.check');
+Route::post('/cek-status', [CustomerDisplayController::class, 'searchStatus'])
+    ->middleware('throttle:10,1')
+    ->name('booking.check.search');
+
+/*
+|--------------------------------------------------------------------------
+| Pemesanan menu via barcode — PUBLIK (tanpa auth)
+|--------------------------------------------------------------------------
+| Pelanggan memindai barcode produk dengan kamera HP di halaman `/order`.
+| Pesanan identified lewat `orders.token` yang disimpan di session browser;
+| endpoint di bawah menolak token yang bukan milik session tersebut.
+*/
+Route::prefix('order')->name('customer.order.')->group(function () {
+    Route::get('/', [CustomerOrderController::class, 'index'])->name('index');
+    Route::post('/', [CustomerOrderController::class, 'store'])->name('store');
+
+    Route::get('/{token}', [CustomerOrderController::class, 'show'])->name('show');
+    Route::post('/{token}/scan', [CustomerOrderController::class, 'scan'])->name('scan');
+    Route::post('/{token}/place', [CustomerOrderController::class, 'place'])->name('place');
+    Route::patch('/{token}/items/{item}', [CustomerOrderController::class, 'updateItem'])->name('items.update');
+    Route::delete('/{token}/items/{item}', [CustomerOrderController::class, 'destroyItem'])->name('items.destroy');
+});
 
 /*
 |--------------------------------------------------------------------------
@@ -60,6 +84,17 @@ Route::middleware(['auth'])->group(function () {
         // Kasir / POS Billing
         Route::get('/pos', [PosController::class, 'index'])->name('pos.index');
         Route::get('/pos/{session}/receipt', [PosController::class, 'receipt'])->name('pos.receipt');
+
+        // Daftar Booking reservasi online
+        Route::get('/pos/bookings', [PosController::class, 'bookings'])->name('pos.bookings');
+        Route::post('/pos/bookings/{booking}/confirm', [PosController::class, 'confirmBooking'])->name('pos.bookings.confirm');
+        Route::post('/pos/bookings/{booking}/cancel', [PosController::class, 'cancelBooking'])->name('pos.bookings.cancel');
+        Route::post('/pos/bookings/{booking}/complete', [PosController::class, 'completeBooking'])->name('pos.bookings.complete');
+
+        // Pesanan menu hasil scan barcode pelanggan
+        Route::get('/pos/orders', [PosController::class, 'orders'])->name('pos.orders');
+        Route::post('/pos/orders/{order}/settle', [PosController::class, 'settleOrder'])->name('pos.orders.settle');
+        Route::post('/pos/orders/{order}/cancel', [PosController::class, 'cancelOrder'])->name('pos.orders.cancel');
 
         // Rekonsiliasi akhir shift
         Route::get('/shift/end', [ShiftController::class, 'end'])->name('shift.end');
@@ -114,6 +149,9 @@ Route::middleware(['auth', 'role.owner'])->prefix('owner')->name('owner.')->grou
     Route::resource('rate-packages', RatePackageController::class)->except('show');
 
     // Master Produk F&B
+    // `products/labels` WAJIB didaftarkan sebelum resource route, kalau
+    // tidak akan tertangkap wildcard `products/{product}` dan 404.
+    Route::get('products/labels', [ProductMasterController::class, 'labels'])->name('products.labels');
     Route::resource('products', ProductMasterController::class)->except('show');
     Route::patch('products/{product}/stock', [ProductMasterController::class, 'adjustStock'])->name('products.stock');
 

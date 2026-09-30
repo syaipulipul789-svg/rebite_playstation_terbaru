@@ -52,10 +52,22 @@
                     <p class="mt-0.5 text-xs text-slate-500">Kelola tagihan dan penyelesaian sewa dari grid unit</p>
                 </div>
 
-                <a href="{{ route('units.index') }}" class="btn-primary">
-                    <x-icon name="layout-grid" class="h-4 w-4" />
-                    Buka Grid Unit
-                </a>
+                <div class="flex flex-wrap items-center gap-2">
+                    <a href="{{ route('pos.bookings') }}" class="btn-subtle">
+                        <x-icon name="calendar-days" class="h-3.5 w-3.5" />
+                        Daftar Booking
+                        @if ($pendingBookingsCount > 0)
+                            <span class="badge bg-amber-500/15 text-amber-300 ring-1 ring-inset ring-amber-500/30">
+                                {{ $pendingBookingsCount }}
+                            </span>
+                        @endif
+                    </a>
+
+                    <a href="{{ route('units.index') }}" class="btn-primary">
+                        <x-icon name="layout-grid" class="h-4 w-4" />
+                        Buka Grid Unit
+                    </a>
+                </div>
             </header>
 
             @if ($activeSessions->isEmpty())

@@ -119,6 +119,7 @@
                         <tr>
                             <th>Tanggal</th>
                             <th class="text-center">Sesi</th>
+                            <th class="text-center">Pesanan</th>
                             <th class="text-right">Tunai</th>
                             <th class="text-right">QRIS</th>
                             <th class="text-right">Total</th>
@@ -130,13 +131,14 @@
                             <tr>
                                 <td class="text-xs font-semibold text-slate-300">{{ $row['label'] }}</td>
                                 <td class="tabular text-center text-xs text-slate-500">{{ $row['sessions'] }}</td>
+                                <td class="tabular text-center text-xs text-slate-500">{{ $row['orders'] }}</td>
                                 <td class="tabular text-right text-xs text-slate-400">{{ \App\Support\Money::format($row['cash'], false) }}</td>
                                 <td class="tabular text-right text-xs text-slate-400">{{ \App\Support\Money::format($row['qris'], false) }}</td>
                                 <td class="tabular text-right text-xs font-bold text-white">{{ \App\Support\Money::format($row['total'], false) }}</td>
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="5" class="py-10 text-center text-xs text-slate-600">
+                                <td colspan="6" class="py-10 text-center text-xs text-slate-600">
                                     Tidak ada transaksi pada periode ini.
                                 </td>
                             </tr>

@@ -8,6 +8,7 @@ use App\Http\Requests\ProductRequest;
 use App\Models\AuditLog;
 use App\Models\Product;
 use App\Services\AuditLogger;
+use App\Support\Barcode;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -37,6 +38,29 @@ class ProductMasterController extends Controller
         ]);
     }
 
+    /**
+     * Sheet label barcode siap cetak untuk ditempel di kemasan produk.
+     * Produk tanpa barcode sengaja dikecualikan — owner harus mengisinya
+     * dulu di form produk, ataubiarkan auto-generate saat produk dibuat.
+     */
+    public function labels(Request $request): View
+    {
+        $products = Product::query()
+            ->active()
+            ->when($request->filled('category'), fn ($q) => $q->where('category', $request->string('category')->toString()))
+            ->withBarcode()
+            ->orderBy('category')
+            ->orderBy('name')
+            ->get();
+
+        return view('owner.products.labels', [
+            'products' => $products,
+            'missingCount' => Product::query()->active()->where(fn ($q) => $q->whereNull('barcode')->orWhere('barcode', ''))->count(),
+            'category' => $request->string('category')->toString(),
+            'categories' => ProductCategory::cases(),
+        ]);
+    }
+
     public function create(): View
     {
         return view('owner.products.form', [
@@ -52,7 +76,14 @@ class ProductMasterController extends Controller
 
     public function store(ProductRequest $request): RedirectResponse
     {
-        $product = Product::create($request->validated());
+        $product = Product::create([
+            ...$request->safe()->except('barcode'),
+            // Barcode kosong diisi otomatis dari id produk supaya produk
+            // tetap bisa dipindai pelanggan tanpa setting manual.
+            'barcode' => $request->input('barcode') ?: null,
+        ]);
+
+        $product->update(['barcode' => $product->barcode ?: Barcode::generateFor($product->id)]);
 
         $this->audit->record(
             user: $request->user(),

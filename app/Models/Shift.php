@@ -52,6 +52,11 @@ class Shift extends Model
         return $this->hasMany(RentalSession::class);
     }
 
+    public function orders(): HasMany
+    {
+        return $this->hasMany(Order::class);
+    }
+
     public function auditLogs(): HasMany
     {
         return $this->hasMany(AuditLog::class);

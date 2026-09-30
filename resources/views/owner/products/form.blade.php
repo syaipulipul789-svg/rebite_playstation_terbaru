@@ -21,6 +21,15 @@
                 maxlength="100"
             />
 
+            <x-input
+                label="Barcode"
+                name="barcode"
+                :value="old('barcode', $product->barcode)"
+                placeholder="Kosongkan untuk generate otomatis"
+                hint="Dipakai pelanggan untuk memindai produk ini di halaman pesanan. Huruf & angka saja."
+                maxlength="64"
+            />
+
             <div class="grid gap-4 sm:grid-cols-2">
                 <x-select
                     label="Kategori"

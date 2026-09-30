@@ -16,7 +16,9 @@
         ]
         : [
             ['route' => 'units.index', 'label' => 'Grid Unit', 'icon' => 'layout-grid', 'match' => 'units.index'],
-            ['route' => 'pos.index', 'label' => 'Kasir / POS', 'icon' => 'receipt', 'match' => 'pos.*'],
+            ['route' => 'pos.index', 'label' => 'Kasir / POS', 'icon' => 'receipt', 'match' => 'pos.index'],
+            ['route' => 'pos.orders', 'label' => 'Pesanan Barcode', 'icon' => 'barcode', 'match' => 'pos.orders'],
+            ['route' => 'pos.bookings', 'label' => 'Daftar Booking', 'icon' => 'calendar-days', 'match' => 'pos.bookings'],
             ['route' => 'shift.end', 'label' => 'Rekonsiliasi Shift', 'icon' => 'wallet', 'match' => 'shift.end'],
         ];
 @endphp

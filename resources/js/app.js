@@ -4,6 +4,10 @@ import { createIcons } from 'lucide';
 import * as LucideIcons from './icons';
 
 import './unit-grid';
+import './customer-display';
+import './customer-booking';
+import './customer-order';
+import './barcode-labels';
 import './reconciliation';
 import './charts';
 
@@ -136,6 +140,52 @@ Alpine.data('flash', (messages) => ({
         this.messages = this.messages.filter((item) => item.key !== key);
     },
 }));
+
+/* ------------------------------------------------------------------ *
+ * Input kode booking (halaman Cek Status Booking)
+ * ------------------------------------------------------------------ */
+Alpine.data('bookingCodeInput', (initial = '') => ({
+    value: initial,
+
+    /**
+     * Agar pengguna cukup mengetik angkanya saja, lalu otomatis dirapikan
+     * jadi format 'BK-0004'.
+     */
+    format() {
+        const digits = this.value.replace(/\D/g, '').replace(/^0+(?=\d)/, '').slice(0, 10);
+
+        this.value = digits === '' ? '' : 'BK-' + digits.padStart(4, '0');
+    },
+}));
+
+/* ------------------------------------------------------------------ *
+ * Hitung mundur sisa waktu main (halaman Cek Status Booking)
+ * ------------------------------------------------------------------ */
+function initBookingCountdown() {
+    document.querySelectorAll('[data-countdown-seconds]').forEach((el) => {
+        let remaining = Number(el.dataset.countdownSeconds) || 0;
+
+        const render = () => {
+            const h = Math.floor(remaining / 3600);
+            const m = Math.floor((remaining % 3600) / 60);
+            const s = remaining % 60;
+            const pad = (n) => String(n).padStart(2, '0');
+
+            el.textContent = remaining <= 0 ? 'WAKTU HABIS' : `${pad(h)}:${pad(m)}:${pad(s)}`;
+        };
+
+        render();
+
+        setInterval(() => {
+            if (remaining <= 0) return;
+
+            remaining -= 1;
+            render();
+        }, 1000);
+    });
+}
+
+document.addEventListener('DOMContentLoaded', initBookingCountdown);
 
 /* ------------------------------------------------------------------ *
  * Helper format

@@ -23,6 +23,12 @@ class AuditLog extends Model
 
     public const EVENT_SESSION_CANCELLED = 'SESSION_CANCELLED';
 
+    public const EVENT_ORDER_PLACED = 'ORDER_PLACED';
+
+    public const EVENT_ORDER_SETTLED = 'ORDER_SETTLED';
+
+    public const EVENT_ORDER_CANCELLED = 'ORDER_CANCELLED';
+
     public const EVENT_MASTER_UPDATED = 'MASTER_UPDATED';
 
     protected $fillable = [
@@ -67,6 +73,9 @@ class AuditLog extends Model
             self::EVENT_SESSION_EXTENDED => 'Durasi Ditambah',
             self::EVENT_SESSION_COMPLETED => 'Sewa Selesai',
             self::EVENT_SESSION_CANCELLED => 'Sewa Dibatalkan',
+            self::EVENT_ORDER_PLACED => 'Pesanan Diterima',
+            self::EVENT_ORDER_SETTLED => 'Pesanan Dibayar',
+            self::EVENT_ORDER_CANCELLED => 'Pesanan Dibatalkan',
             self::EVENT_MASTER_UPDATED => 'Master Diubah',
             default => $this->event,
         };
@@ -78,6 +87,9 @@ class AuditLog extends Model
             self::EVENT_SHIFT_CLOSED => 'bg-violet-500/15 text-violet-300 ring-1 ring-inset ring-violet-500/30',
             self::EVENT_SESSION_COMPLETED => 'bg-emerald-500/15 text-emerald-300 ring-1 ring-inset ring-emerald-500/30',
             self::EVENT_SESSION_CANCELLED => 'bg-slate-500/15 text-slate-400 ring-1 ring-inset ring-slate-500/30',
+            self::EVENT_ORDER_CANCELLED => 'bg-slate-500/15 text-slate-400 ring-1 ring-inset ring-slate-500/30',
+            self::EVENT_ORDER_SETTLED => 'bg-emerald-500/15 text-emerald-300 ring-1 ring-inset ring-emerald-500/30',
+            self::EVENT_ORDER_PLACED => 'bg-sky-500/15 text-sky-300 ring-1 ring-inset ring-sky-500/30',
             self::EVENT_MASTER_UPDATED => 'bg-amber-500/15 text-amber-300 ring-1 ring-inset ring-amber-500/30',
             default => 'bg-sky-500/15 text-sky-300 ring-1 ring-inset ring-sky-500/30',
         };

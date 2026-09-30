@@ -12,7 +12,7 @@
             <x-stat-card
                 label="Pendapatan Hari Ini"
                 :value="\App\Support\Money::format($summary['today_revenue'])"
-                :hint="$summary['today_sessions'] . ' sesi selesai'"
+                :hint="$summary['today_sessions'] . ' sesi & ' . $summary['today_orders'] . ' pesanan selesai'"
                 icon="circle-dollar-sign"
                 tone="brand"
             />

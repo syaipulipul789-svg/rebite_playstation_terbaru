@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\OrderStatus;
 use App\Enums\PaymentMethod;
 use App\Enums\RentalSessionStatus;
 use App\Enums\ShiftStatus;
@@ -66,24 +67,38 @@ final class ShiftService
     }
 
     /**
-     * Hitung ulang rekap pendapatan sistem dari sesi yang sudah COMPLETED
-     * di dalam shift tersebut, dikelompokkan per metode pembayaran.
+     * Hitung ulang rekap pendapatan sistem dari sesi rental yang sudah
+     * COMPLETED plus pesanan barcode yang sudah dibayar, di dalam shift
+     * tersebut, dikelompokkan per metode pembayaran.
      *
-     * Dipanggil setiap kali ada sesi yang diselesaikan agar angka pada halaman
-     * rekonsiliasi selalu sinkron dengan database.
+     * Dipanggil setiap kali ada sesi atau pesanan yang diselesaikan agar
+     * angka pada halaman rekonsiliasi selalu sinkron dengan database.
      */
     public function recalculateRevenue(Shift $shift): Shift
     {
-        $totals = $shift->rentalSessions()
+        $sessionTotals = $shift->rentalSessions()
             ->where('status', RentalSessionStatus::COMPLETED)
             ->whereNotNull('payment_method')
             ->selectRaw('payment_method, SUM(rental_fee + COALESCE((SELECT SUM(subtotal) FROM session_items WHERE session_items.rental_session_id = rental_sessions.id), 0)) as total')
             ->groupBy('payment_method')
             ->pluck('total', 'payment_method');
 
+        $orderTotals = $shift->orders()
+            ->where('status', OrderStatus::COMPLETED)
+            ->whereNotNull('payment_method')
+            ->selectRaw('payment_method, SUM(total_price) as total')
+            ->groupBy('payment_method')
+            ->pluck('total', 'payment_method');
+
         $shift->forceFill([
-            'system_cash_revenue' => Money::round((float) ($totals[PaymentMethod::CASH->value] ?? 0)),
-            'system_qris_revenue' => Money::round((float) ($totals[PaymentMethod::QRIS->value] ?? 0)),
+            'system_cash_revenue' => Money::round(
+                (float) ($sessionTotals[PaymentMethod::CASH->value] ?? 0)
+                + (float) ($orderTotals[PaymentMethod::CASH->value] ?? 0),
+            ),
+            'system_qris_revenue' => Money::round(
+                (float) ($sessionTotals[PaymentMethod::QRIS->value] ?? 0)
+                + (float) ($orderTotals[PaymentMethod::QRIS->value] ?? 0),
+            ),
         ])->save();
 
         return $shift;
@@ -117,6 +132,9 @@ final class ShiftService
             'requires_note' => $discrepancy !== null && $discrepancy !== 0.0,
             'session_count' => $shift->rentalSessions()
                 ->where('status', RentalSessionStatus::COMPLETED)
+                ->count(),
+            'order_count' => $shift->orders()
+                ->where('status', OrderStatus::COMPLETED)
                 ->count(),
         ];
     }

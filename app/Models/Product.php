@@ -14,6 +14,7 @@ class Product extends Model
 
     protected $fillable = [
         'name',
+        'barcode',
         'category',
         'price',
         'stock',
@@ -37,6 +38,11 @@ class Product extends Model
         return $this->hasMany(SessionItem::class);
     }
 
+    public function orderItems(): HasMany
+    {
+        return $this->hasMany(OrderItem::class);
+    }
+
     public function scopeActive(Builder $query): Builder
     {
         return $query->where('is_active', true);
@@ -45,6 +51,29 @@ class Product extends Model
     public function scopeInStock(Builder $query): Builder
     {
         return $query->where('stock', '>', 0);
+    }
+
+    public function scopeWithBarcode(Builder $query): Builder
+    {
+        return $query->whereNotNull('barcode')->where('barcode', '!=', '');
+    }
+
+    /**
+     * Produk yang boleh dipindai pelanggan: aktif, punya barcode, dan stok
+     * masih ada. Barcode dinormalisasi ke huruf kapital supaya hasil scan
+     * tidak_case sensitive.
+     */
+    public function scopeScannable(Builder $query): Builder
+    {
+        return $query->active()
+            ->whereNotNull('barcode')
+            ->where('barcode', '!=', '')
+            ->inStock();
+    }
+
+    public function hasBarcode(): bool
+    {
+        return filled($this->barcode);
     }
 
     public function isLowStock(): bool

@@ -49,10 +49,17 @@
                 @endforeach
             </div>
 
-            <a href="{{ route('owner.products.create') }}" class="btn-primary">
-                <x-icon name="plus" class="h-4 w-4" />
-                Tambah Produk
-            </a>
+            <div class="flex flex-wrap items-center gap-2">
+                <a href="{{ route('owner.products.labels') }}" class="btn-ghost">
+                    <x-icon name="barcode" class="h-4 w-4" />
+                    Cetak Label
+                </a>
+
+                <a href="{{ route('owner.products.create') }}" class="btn-primary">
+                    <x-icon name="plus" class="h-4 w-4" />
+                    Tambah Produk
+                </a>
+            </div>
         </div>
 
         <div class="card overflow-hidden">
@@ -61,6 +68,7 @@
                     <thead>
                         <tr>
                             <th>Produk</th>
+                            <th>Barcode</th>
                             <th>Kategori</th>
                             <th class="text-right">Harga</th>
                             <th class="text-center">Stok</th>
@@ -75,6 +83,14 @@
                                 <td>
                                     <p class="text-xs font-semibold text-slate-200">{{ $product->name }}</p>
                                     <p class="tabular text-[10px] text-slate-500">batas menipis: {{ $product->low_stock_threshold }}</p>
+                                </td>
+
+                                <td>
+                                    @if ($product->hasBarcode())
+                                        <span class="tabular text-xs text-slate-400">{{ $product->barcode }}</span>
+                                    @else
+                                        <span class="text-[10px] font-semibold uppercase text-amber-300/80">Belum ada</span>
+                                    @endif
                                 </td>
 
                                 <td>
@@ -140,7 +156,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="6" class="py-12 text-center text-xs text-slate-600">
+                                <td colspan="7" class="py-12 text-center text-xs text-slate-600">
                                     Belum ada produk. Tambahkan snack atau minuman untuk kasir.
                                 </td>
                             </tr>

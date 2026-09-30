@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Owner;
 
+use App\Enums\PaymentMethod;
 use App\Enums\ShiftStatus;
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
@@ -54,8 +55,8 @@ class ReportController extends Controller
             'byUnit' => $this->analytics->revenueByUnit($from, $to),
             'range' => [
                 'revenue' => $this->analytics->revenueBetween($from, $to),
-                'cash' => $this->analytics->revenueBetween($from, $to, 'CASH'),
-                'qris' => $this->analytics->revenueBetween($from, $to, 'QRIS'),
+                'cash' => $this->analytics->revenueBetween($from, $to, PaymentMethod::CASH),
+                'qris' => $this->analytics->revenueBetween($from, $to, PaymentMethod::QRIS),
                 'starting_cash' => (float) $totals->starting_cash,
                 'shift_cash' => (float) $totals->cash,
                 'shift_qris' => (float) $totals->qris,

@@ -2,7 +2,13 @@
 
 namespace Tests\Feature;
 
+use App\Enums\OrderStatus;
+use App\Enums\PaymentMethod;
 use App\Enums\UnitStatus;
+use App\Models\Order;
+use App\Services\OwnerAnalyticsService;
+use Carbon\CarbonImmutable;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class OwnerAccessTest extends TestCase
@@ -193,6 +199,53 @@ class OwnerAccessTest extends TestCase
             ->assertOk()
             ->assertViewHas('from')
             ->assertViewHas('to');
+    }
+
+    /**
+     * Pesanan barcode adalah pendapatan juga. Kalau tidak ikut dihitung,
+     * kartu "Total Pendapatan" bisa lebih kecil daripada jumlah baris
+     * rekap shift yang dicetak tepat di bawahnya.
+     */
+    public function test_pendapatan_laporan_mencakup_pesanan_barcode(): void
+    {
+        $owner = $this->makeOwner();
+        $cashier = $this->makeCashier();
+        $shift = $this->makeOpenShift($cashier);
+        $package = $this->makePackage();
+
+        $this->startAndCompleteSession($cashier, $package, 'CASH');
+        $this->startAndCompleteSession($cashier, $package, 'QRIS');
+
+        $order = Order::create([
+            'code' => 'ORD-TEST',
+            'token' => (string) Str::uuid(),
+            'customer_name' => 'Rina',
+            'customer_phone' => '081234567890',
+            'status' => OrderStatus::COMPLETED,
+            'total_price' => 25000,
+            'payment_method' => PaymentMethod::CASH,
+            'placed_at' => now(),
+            'settled_at' => now(),
+            'shift_id' => $shift->id,
+            'user_id' => $cashier->id,
+        ]);
+
+        $analytics = app(OwnerAnalyticsService::class);
+        $from = CarbonImmutable::today()->startOfDay();
+        $to = CarbonImmutable::today()->endOfDay();
+
+        $this->assertEquals(45000.0, $analytics->revenueBetween($from, $to));
+        $this->assertEquals(35000.0, $analytics->revenueBetween($from, $to, PaymentMethod::CASH));
+        $this->assertEquals(10000.0, $analytics->revenueBetween($from, $to, PaymentMethod::QRIS));
+
+        $daily = collect($analytics->dailyBreakdown($from, $to))->firstWhere('date', now()->toDateString());
+        $this->assertSame(45000.0, $daily['total']);
+        $this->assertSame(2, $daily['sessions']);
+        $this->assertSame(1, $daily['orders']);
+
+        $this->actingAs($owner)->get(route('owner.reports'))->assertOk();
+
+        $this->assertDatabaseHas('orders', ['id' => $order->id]);
     }
 
     /**
