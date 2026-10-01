@@ -43,6 +43,23 @@ abstract class TestCase extends BaseTestCase
         ], $attributes));
     }
 
+    /**
+     * Akun pelanggan. Kolom `username` sengaja diisi nomor WhatsApp yang sudah
+     * dinormalkan supaya login lewat nomor HP langsung bekerja.
+     */
+    protected function makeCustomer(string $phone = '081234567890', array $attributes = []): User
+    {
+        return User::create(array_merge([
+            'name' => 'Budi Santoso',
+            'username' => $phone,
+            'phone' => $phone,
+            'email' => null,
+            'password' => 'password',
+            'role' => UserRole::CUSTOMER,
+            'is_active' => true,
+        ], $attributes));
+    }
+
     protected function makeUnit(array $attributes = []): Unit
     {
         static $sequence = 0;

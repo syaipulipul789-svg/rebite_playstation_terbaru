@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\RentalSessionController;
 use App\Http\Controllers\Api\UnitController as ApiUnitController;
+use App\Http\Controllers\CustomerBookingController;
 use App\Http\Controllers\CustomerDisplayController;
 use App\Http\Controllers\CustomerOrderController;
 use App\Http\Controllers\Owner\OwnerDashboardController;
@@ -22,28 +23,37 @@ use Illuminate\Support\Facades\Route;
 | Tampilan Pelanggan (Public View) tanpa login: landing page di `/` dan live
 | monitor layar TV di `/display`. Untuk user yang sudah login, `index()` tetap
 | mengalihkan ke halaman internal sesuai role (Owner -> dashboard, kasir ->
-| grid unit / gatekeeper shift).
+| grid unit / gatekeeper shift, pelanggan -> dashboard booking).
 */
 Route::get('/', [CustomerDisplayController::class, 'index'])->name('customer.home');
 Route::get('/display', [CustomerDisplayController::class, 'liveDisplay'])->name('customer.display');
 Route::get('/display/data', [CustomerDisplayController::class, 'displayData'])->name('customer.display.data');
-
-// Reservasi online publik (tanpa auth). Dibatasi 12 permintaan/menit per IP
-// karena endpoint ini menulis ke database tanpa login.
-Route::post('/booking', [CustomerDisplayController::class, 'storeBooking'])
-    ->middleware('throttle:12,1')
-    ->name('booking.store');
-
-// Status booking milik session browser ini (dipakai polling halaman publik).
-Route::get('/booking/status', [CustomerDisplayController::class, 'bookingStatus'])
-    ->middleware('throttle:60,1')
-    ->name('booking.status');
 
 // Cek status booking dari perangkat mana pun (butuh kode + nomor WhatsApp).
 Route::get('/cek-status', [CustomerDisplayController::class, 'checkStatus'])->name('booking.check');
 Route::post('/cek-status', [CustomerDisplayController::class, 'searchStatus'])
     ->middleware('throttle:10,1')
     ->name('booking.check.search');
+
+/*
+|--------------------------------------------------------------------------
+| PELANGGAN — wajib login (akun CustomerArea, daftar lewat nomor WhatsApp)
+|--------------------------------------------------------------------------
+| Nama dan nomor WhatsApp diambil dari akun, jadi kasir selalu punya kontak
+| yang bisa dihubungi. Booking yang dibuat langsung mengunci slot jamnya
+| supaya pelanggan lain tidak bisa memesan jam yang sama.
+*/
+Route::middleware(['auth', 'role.customer'])->prefix('customer')->name('customer.')->group(function () {
+    Route::get('/', [CustomerBookingController::class, 'index'])->name('dashboard');
+
+    Route::post('/bookings', [CustomerBookingController::class, 'store'])
+        ->middleware('throttle:12,1')
+        ->name('bookings.store');
+
+    Route::get('/bookings/status', [CustomerBookingController::class, 'status'])
+        ->middleware('throttle:60,1')
+        ->name('bookings.status');
+});
 
 /*
 |--------------------------------------------------------------------------
@@ -105,7 +115,13 @@ Route::middleware(['auth'])->group(function () {
 
     // Fallback berdasar role
     Route::get('/dashboard', function () {
-        return auth()->user()->isOwner()
+        $user = auth()->user();
+
+        if ($user->isCustomer()) {
+            return redirect()->route('customer.dashboard');
+        }
+
+        return $user->isOwner()
             ? redirect()->route('owner.dashboard')
             : redirect()->route('units.index');
     })->name('dashboard');

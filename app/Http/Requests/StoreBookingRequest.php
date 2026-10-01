@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Enums\UserRole;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -10,18 +11,20 @@ class StoreBookingRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return true;
+        return $this->user()?->role === UserRole::CUSTOMER;
     }
 
     /**
+     * Nama dan nomor WhatsApp sengaja tidak divalidasi dari sini: keduanya
+     * diambil dari akun pelanggan yang sedang login, jadi tidak bisa diisi
+     * atau ditimpa lewat request.
+     *
      * @return array<string, ValidationRule|array<mixed>|string>
      */
     public function rules(): array
     {
         return [
             'console_id' => ['required', 'integer', Rule::exists('units', 'id')],
-            'customer_name' => ['required', 'string', 'max:255'],
-            'customer_phone' => ['required', 'string', 'max:30'],
             'start_time' => ['required', 'date', 'after:now', 'before:now +14 days'],
             'duration_hours' => ['required', 'integer', 'min:1', 'max:12'],
             'notes' => ['nullable', 'string', 'max:500'],
@@ -33,9 +36,6 @@ class StoreBookingRequest extends FormRequest
         return [
             'console_id.required' => 'Unit wajib dipilih.',
             'console_id.exists' => 'Unit yang dipilih tidak ditemukan.',
-            'customer_name.required' => 'Nama wajib diisi.',
-            'customer_name.max' => 'Nama terlalu panjang.',
-            'customer_phone.required' => 'Nomor WhatsApp wajib diisi.',
             'start_time.required' => 'Jam mulai wajib diisi.',
             'start_time.date' => 'Format jam mulai tidak valid.',
             'start_time.after' => 'Jam mulai harus di masa depan.',
@@ -55,8 +55,6 @@ class StoreBookingRequest extends FormRequest
     {
         return [
             'console_id' => 'unit',
-            'customer_name' => 'nama',
-            'customer_phone' => 'nomor WhatsApp',
             'start_time' => 'jam mulai',
             'duration_hours' => 'durasi',
             'notes' => 'catatan',

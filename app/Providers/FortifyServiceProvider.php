@@ -2,7 +2,9 @@
 
 namespace App\Providers;
 
+use App\Actions\Fortify\CreateNewUser;
 use App\Actions\Fortify\ResetUserPassword;
+use App\Http\Responses\CustomerRegisterResponse;
 use App\Http\Responses\RoleBasedLoginResponse;
 use App\Models\User;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -13,6 +15,7 @@ use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Laravel\Fortify\Contracts\LoginResponse;
+use Laravel\Fortify\Contracts\RegisterResponse;
 use Laravel\Fortify\Fortify;
 
 class FortifyServiceProvider extends ServiceProvider
@@ -26,12 +29,18 @@ class FortifyServiceProvider extends ServiceProvider
     {
         Fortify::resetUserPasswordsUsing(ResetUserPassword::class);
 
+        // Pendaftaran memakai aksi milik aplikasi sendiri supaya bisa
+        // memvalidasi nomor WhatsApp dan membuat akun dengan role CUSTOMER.
+        Fortify::createUsersUsing(CreateNewUser::class);
+
         // Fortify 1.40 tidak lagi mem-bundle view, jadi view daftarkan manual.
         Fortify::loginView('auth.login');
+        Fortify::registerView('auth.register');
         Fortify::requestPasswordResetLinkView('auth.forgot-password');
         Fortify::resetPasswordView('auth.reset-password');
 
         // Autentikasi memakai USERNAME (bukan email) untuk kasir di meja kasir.
+        // Pelanggan memakai kolom yang sama, tapi isinya nomor WhatsApp-nya.
         Fortify::username('username');
 
         Fortify::authenticateUsing(function (Request $request): ?User {
@@ -55,10 +64,20 @@ class FortifyServiceProvider extends ServiceProvider
         // Pengalihan setelah login berdasarkan role.
         $this->app->singleton(LoginResponse::class, fn () => new RoleBasedLoginResponse);
 
+        // Pelanggan yang baru daftar langsung masuk ke dashboard booking-nya,
+        // bukan ke fallback `/dashboard` milik staff.
+        $this->app->singleton(RegisterResponse::class, fn () => new CustomerRegisterResponse);
+
         RateLimiter::for('login', function (Request $request) {
             $throttleKey = Str::transliterate(Str::lower((string) $request->input(Fortify::username()))).'|'.$request->ip();
 
             return Limit::perMinute(5)->by($throttleKey);
+        });
+
+        // Pendaftaran dibuka untuk umum, jadi limiter-nya lebih longgar dari
+        // login: satu IP masih boleh membuat beberapa akun berbeda.
+        RateLimiter::for('register', function (Request $request) {
+            return Limit::perHour(5)->by((string) $request->ip());
         });
     }
 }

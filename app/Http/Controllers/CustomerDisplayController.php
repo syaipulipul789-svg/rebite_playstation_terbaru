@@ -6,25 +6,27 @@ use App\Enums\ProductCategory;
 use App\Enums\ShiftStatus;
 use App\Enums\UnitStatus;
 use App\Http\Requests\SearchBookingStatusRequest;
-use App\Http\Requests\StoreBookingRequest;
 use App\Models\Booking;
 use App\Models\Product;
 use App\Models\RatePackage;
 use App\Models\Unit;
-use App\Services\BookingService;
 use App\Support\Money;
 use App\Support\Phone;
-use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\View\View;
 
+/**
+ * Halaman yang bisa dilihat tanpa login: landing page di `/` dan live monitor
+ * layar TV di `/display`.
+ *
+ * Booking tidak ada di sini — pelanggan harus login dulu, dikerjakan di
+ * {@see CustomerBookingController}.
+ */
 class CustomerDisplayController extends Controller
 {
-    public function __construct(private readonly BookingService $bookings) {}
-
     /**
      * Halaman awal PUBLIK (tanpa login): ketersediaan unit, paket sewa,
      * dan menu snack/minuman.
@@ -36,6 +38,10 @@ class CustomerDisplayController extends Controller
     public function index(Request $request): View|RedirectResponse
     {
         if ($request->user() !== null) {
+            if ($request->user()->isCustomer()) {
+                return redirect()->route('customer.dashboard');
+            }
+
             if ($request->user()->isOwner()) {
                 return redirect()->route('owner.dashboard');
             }
@@ -67,69 +73,15 @@ class CustomerDisplayController extends Controller
             'ratePackages' => RatePackage::query()->active()->ordered()->get(),
             'unitTypes' => $this->groupUnitTypes($units),
             'productGroups' => $this->groupProducts($products),
-            'bookingUnits' => $this->bookingUnits($units),
-            'myBookings' => $this->myBookings(),
-        ]);
-    }
-
-    /**
-     * Proses form reservasi online dari halaman publik (tanpa login).
-     * Bentrok jadwal dicek di BookingService terhadap sesi rental berjalan
-     * dan booking confirmed lain pada konsol yang sama.
-     */
-    public function storeBooking(StoreBookingRequest $request): JsonResponse|RedirectResponse
-    {
-        $unit = Unit::findOrFail($request->integer('console_id'));
-        $start = Carbon::parse($request->input('start_time'));
-        $end = $start->copy()->addHours($request->integer('duration_hours'));
-
-        $booking = $this->bookings->create(
-            unit: $unit,
-            customerName: $request->input('customer_name'),
-            customerPhone: $request->input('customer_phone'),
-            start: $start,
-            end: $end,
-            notes: $request->input('notes'),
-        )->fresh('console');
-
-        $this->rememberBookingToken($booking->public_token);
-
-        if ($request->expectsJson()) {
-            return response()->json([
-                'message' => 'Booking anda telah diterima dan menunggu persetujuan kasir.',
-                'booking_code' => $booking->bookingCode(),
-                'console_name' => $booking->console?->name,
-                'start_time_label' => $booking->start_time->format('d M Y H:i'),
-                'end_time_label' => $booking->end_time->format('d M Y H:i'),
-                'total_price_label' => Money::format($booking->total_price),
-                'status' => $booking->customerStatus(),
-            ], 201);
-        }
-
-        return back();
-    }
-
-    /**
-     * Status booking milik session browser ini saja.
-     *
-     * Token publik (uuid) disimpan di session, bukan kode `BK-0007`: kode itu
-     * diturunkan dari primary key berurutan sehingga bisa ditebak, sementara
-     * token di sini tidak pernah muncul di halaman publik.
-     */
-    public function bookingStatus(): JsonResponse
-    {
-        return response()->json([
-            'server_timestamp' => now()->getTimestampMs(),
-            'bookings' => $this->myBookings(),
         ]);
     }
 
     /**
      * Halaman publik untuk cek status booking dari perangkat lain.
      *
-     * Diperlukan karena section "Booking Saya" hanya menyimpan token di
-     * session browser: pelanggan yang booking dari HP tidak bisa melihat
-     * statusnya dari laptop, atau setelah cookie terhapus.
+     * Diperlukan karena dashboard pelanggan memakai session login: orang
+     * yang memesan lewat HP tidak bisa melihat statusnya dari laptop, atau
+     * setelah cookie terhapus.
      */
     public function checkStatus(): View
     {
@@ -283,91 +235,5 @@ class CustomerDisplayController extends Controller
             })
             ->filter(fn (array $group) => $group['items']->isNotEmpty())
             ->values();
-    }
-
-    /**
-     * Data unit yang boleh dipesan (READY / BUSY) untuk modal form booking.
-     * Untuk unit BUSY, `session_end_timestamp` = kapan slot berikutnya bebas,
-     * dipakai sebagai jam mulai default di form.
-     *
-     * @return Collection<int, array<string, mixed>>
-     */
-    private function bookingUnits($units): Collection
-    {
-        return $units
-            ->reject(fn (Unit $unit) => $unit->status === UnitStatus::MAINTENANCE)
-            ->map(function (Unit $unit) {
-                $session = $unit->runningSession;
-
-                return [
-                    'id' => $unit->id,
-                    'code' => $unit->code,
-                    'name' => $unit->name,
-                    'type' => $unit->type,
-                    'status' => $unit->status->value,
-                    'hourly_rate' => (float) $unit->hourly_rate,
-                    'is_free' => $unit->isFree(),
-                    'session_end_timestamp' => $session !== null
-                        ? $session->start_time->addMinutes($session->planned_minutes)->getTimestampMs()
-                        : null,
-                ];
-            })
-            ->values();
-    }
-
-    /**
-     * Simpan token publik booking ke session browser, batasi 10 terbaru.
-     */
-    private function rememberBookingToken(string $token): void
-    {
-        $tokens = array_values(array_filter(
-            array_unique([...(array) session('customer_booking_tokens', []), $token]),
-            fn (mixed $value): bool => is_string($value) && $value !== '',
-        ));
-
-        session(['customer_booking_tokens' => array_slice($tokens, -10)]);
-    }
-
-    /**
-     * Booking milik session ini, siap dikirim ke halaman status pelanggan.
-     *
-     * @return array<int, array<string, mixed>>
-     */
-    private function myBookings(): array
-    {
-        $tokens = (array) session('customer_booking_tokens', []);
-
-        if ($tokens === []) {
-            return [];
-        }
-
-        return Booking::query()
-            ->forTokens(array_values(array_filter($tokens, 'is_string')))
-            ->with(['console', 'rentalSession'])
-            ->get()
-            ->sortByDesc(fn (Booking $booking) => $booking->start_time)
-            ->map(fn (Booking $booking) => $this->transformBooking($booking))
-            ->values()
-            ->all();
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function transformBooking(Booking $booking): array
-    {
-        $status = $booking->customerStatus();
-        $session = $booking->rentalSession;
-
-        return [
-            'code' => $booking->bookingCode(),
-            'console_name' => $booking->console?->name,
-            'console_code' => $booking->console?->code,
-            'start_time_label' => $booking->start_time->format('d M Y H:i'),
-            'end_time_label' => $booking->end_time->format('d M Y H:i'),
-            'total_price_label' => Money::format($booking->total_price),
-            'status' => $status,
-            'remaining_seconds' => $status['is_occupied'] ? $session->remainingSeconds() : null,
-        ];
     }
 }

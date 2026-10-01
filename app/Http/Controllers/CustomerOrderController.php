@@ -73,7 +73,7 @@ class CustomerOrderController extends Controller
             customerName: $request->string('customer_name')->toString(),
             customerPhone: $request->string('customer_phone')->toString(),
             unit: $request->filled('unit_id') ? Unit::findOrFail($request->integer('unit_id')) : null,
-            booking: $this->resolveBooking($request->input('booking_code')),
+            booking: $this->resolveBooking($request, $request->input('booking_code')),
             notes: $request->input('notes'),
         );
 
@@ -199,11 +199,11 @@ class CustomerOrderController extends Controller
      *
      * Kode `BK-####` diturunkan dari primary key berurutan, jadi tanpa cek
      * kepemilikan siapa pun bisa menebak booking orang lain lalu attach
-     * pesanannya. Karena itu booking wajib cocok dengan `public_token` yang
-     * tersimpan di session browser yang sama; selain itu ditolak diam-diam
-     * agar pemeriksaannya tidak bisa dipetakan.
+     * pesanannya. Karena itu booking harus milik akun pelanggan yang sedang
+     * login. Selain itu ditolak diam-diam agar pemeriksaannya tidak bisa
+     * dipetakan.
      */
-    private function resolveBooking(?string $code): ?Booking
+    private function resolveBooking(Request $request, ?string $code): ?Booking
     {
         if ($code === null || trim($code) === '') {
             return null;
@@ -215,18 +215,17 @@ class CustomerOrderController extends Controller
             return null;
         }
 
-        $ownedTokens = array_values(array_filter(
-            (array) session('customer_booking_tokens', []),
-            'is_string'
-        ));
+        $customer = $request->user();
 
-        if ($ownedTokens === []) {
+        // Booking hanya bisa dibuat dari akun pelanggan, jadi tanpa sesi
+        // pelanggan tidak ada yang boleh ditautkan.
+        if ($customer === null || ! $customer->isCustomer()) {
             return null;
         }
 
         return Booking::query()
+            ->forCustomer($customer)
             ->whereKey((int) $matches[1])
-            ->forTokens($ownedTokens)
             ->whereIn('status', [BookingStatus::PENDING, BookingStatus::CONFIRMED])
             ->first();
     }

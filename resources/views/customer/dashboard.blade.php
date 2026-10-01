@@ -1,0 +1,366 @@
+@use('App\Enums\UnitStatus', 'UnitStatus')
+@use('App\Support\Money', 'Money')
+
+<!DOCTYPE html>
+<html lang="id" class="dark scroll-smooth">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+
+    <title>Booking Konsol — {{ config('app.name') }}</title>
+
+    <link rel="preconnect" href="https://fonts.bunny.net">
+    <link href="https://fonts.bunny.net/css?family=plus-jakarta-sans:400,500,600,700,800&display=swap" rel="stylesheet">
+
+    @vite(['resources/css/app.css', 'resources/js/app.js'])
+</head>
+<body class="min-h-screen bg-ink-950 text-slate-200 antialiased">
+
+    <header class="border-b border-white/5 bg-ink-900/60 backdrop-blur">
+        <div class="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6">
+            <div class="flex items-center gap-2.5">
+                <span class="grid h-9 w-9 place-items-center rounded-xl bg-brand-500/15 text-brand-300 ring-1 ring-inset ring-brand-500/30">
+                    <x-icon name="gamepad-2" class="h-4.5 w-4.5" />
+                </span>
+                <div>
+                    <p class="text-sm font-extrabold uppercase tracking-widest text-white">{{ config('app.name') }}</p>
+                    <p class="text-[11px] text-slate-500">Booking Konsol</p>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-3">
+                <span class="hidden text-xs text-slate-500 sm:block">
+                    Halo, <strong class="font-semibold text-white">{{ auth()->user()->name }}</strong>
+                    <span class="tabular text-slate-600">· {{ auth()->user()->phone }}</span>
+                </span>
+
+                <a href="{{ route('customer.home') }}" class="btn-subtle">
+                    <x-icon name="home" class="h-3.5 w-3.5" />
+                    Beranda
+                </a>
+
+                <form method="POST" action="{{ route('logout') }}">
+                    @csrf
+                    <button type="submit" class="btn-subtle">
+                        <x-icon name="log-out" class="h-3.5 w-3.5" />
+                        Keluar
+                    </button>
+                </form>
+            </div>
+        </div>
+    </header>
+
+    <main class="mx-auto max-w-6xl space-y-12 px-4 py-10 sm:px-6">
+
+        @include('layouts.partials.flash')
+
+        {{-- ================= BOOKING SAYA ================= --}}
+        <section aria-label="Status booking saya">
+            <div class="mb-4 flex flex-wrap items-end justify-between gap-3">
+                <div>
+                    <h1 class="text-2xl font-extrabold text-white sm:text-3xl">Booking Saya</h1>
+                    <p class="mt-1 text-sm text-slate-500">
+                        Slot yang sudah Anda pesan langsung terkunci — pelanggan lain tidak bisa memakai jam yang sama.
+                        Status unit berubah jadi <strong class="font-semibold text-emerald-300">Terisi</strong>
+                        selama Anda bermain.
+                    </p>
+                </div>
+                <p class="text-xs text-slate-500" x-show="lastSync" x-text="lastSync"></p>
+            </div>
+
+            <div x-data="myBookings({ initial: {{ Js::from($myBookings) }}, url: @js(route('customer.bookings.status')) })">
+                <template x-if="bookings.length === 0">
+                    <div class="card px-6 py-14 text-center">
+                        <x-icon name="calendar-days" class="mx-auto h-9 w-9 text-slate-700" />
+                        <p class="mt-4 text-sm font-semibold text-slate-400">Belum ada booking.</p>
+                        <p class="mt-1 text-sm text-slate-500">Pilih unit kosong di bawah untuk memesan jam main.</p>
+                    </div>
+                </template>
+
+                <div class="space-y-3">
+                    <template x-for="booking in bookings" :key="booking.code">
+                        <article class="card overflow-hidden p-5">
+                            <div class="flex flex-wrap items-start justify-between gap-3">
+                                <div>
+                                    <p class="text-[10px] font-bold uppercase tracking-widest text-slate-500">Kode Booking</p>
+                                    <p class="text-2xl font-extrabold tracking-wider text-brand-300" x-text="booking.code"></p>
+                                </div>
+                                <span class="badge" :class="booking.status.badge_class" x-text="booking.status.label"></span>
+                            </div>
+
+                            <p class="mt-3 text-sm text-slate-300" x-text="booking.status.hint"></p>
+
+                            <dl class="mt-4 grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+                                <div>
+                                    <dt class="text-slate-500">Konsol</dt>
+                                    <dd class="font-semibold text-white">
+                                        <span x-text="booking.console_name"></span>
+                                        <span class="tabular text-slate-500" x-text="booking.console_code"></span>
+                                    </dd>
+                                </div>
+                                <div>
+                                    <dt class="text-slate-500">Jadwal</dt>
+                                    <dd class="tabular text-slate-300" x-text="booking.start_time_label + ' → ' + booking.end_time_label"></dd>
+                                </div>
+                                <div>
+                                    <dt class="text-slate-500">Perkiraan Biaya</dt>
+                                    <dd class="font-bold text-white" x-text="booking.total_price_label"></dd>
+                                </div>
+                                <div x-show="booking.remaining_seconds !== null">
+                                    <dt class="text-slate-500">Sisa Waktu</dt>
+                                    <dd class="tabular font-bold text-emerald-300" x-text="remainingLabel(booking)"></dd>
+                                </div>
+                            </dl>
+                        </article>
+                    </template>
+                </div>
+            </div>
+        </section>
+
+        {{-- ================= RINGKASAN STATUS ================= --}}
+        <section aria-label="Ringkasan ketersediaan unit">
+            <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div class="card p-5">
+                    <p class="text-[10px] font-bold uppercase tracking-widest text-slate-500">Total Unit</p>
+                    <p class="tabular mt-2 text-3xl font-extrabold text-white">{{ $stats['total'] }}</p>
+                </div>
+                <a href="#units" class="card p-5 ring-1 ring-inset ring-emerald-500/30 transition hover:bg-white/5">
+                    <p class="text-[10px] font-bold uppercase tracking-widest text-emerald-400/70">Siap Main</p>
+                    <p class="tabular mt-2 text-3xl font-extrabold text-emerald-300">{{ $stats['ready'] }}</p>
+                    <p class="mt-1 text-[11px] text-slate-500">Bisa langsung dipesan</p>
+                </a>
+                <div class="card p-5 ring-1 ring-inset ring-rose-500/30">
+                    <p class="text-[10px] font-bold uppercase tracking-widest text-rose-400/70">Sedang Dipakai</p>
+                    <p class="tabular mt-2 text-3xl font-extrabold text-rose-300">{{ $stats['busy'] }}</p>
+                </div>
+                <div class="card p-5 ring-1 ring-inset ring-amber-500/30">
+                    <p class="text-[10px] font-bold uppercase tracking-widest text-amber-400/70">Dalam Servis</p>
+                    <p class="tabular mt-2 text-3xl font-extrabold text-amber-300">{{ $stats['maintenance'] }}</p>
+                </div>
+            </div>
+        </section>
+
+        {{-- ================= STATUS UNIT ================= --}}
+        <section id="units" class="scroll-mt-8" x-data="bookingPanel({ units: {{ Js::from($bookingUnits) }}, url: @js(route('customer.bookings.store')) })">
+            <div class="mb-6 flex flex-wrap items-end justify-between gap-3">
+                <div>
+                    <h2 class="text-2xl font-extrabold text-white sm:text-3xl">Pilih Unit Kosong</h2>
+                    <p class="mt-1 text-sm text-slate-500">
+                        Hijau = kosong dan bisa dipesan sekarang. Merah = sedang dipakai, tapi jam berikutnya bisa dipesan.
+                    </p>
+                </div>
+                <a href="{{ route('customer.display') }}" class="btn-subtle">
+                    <x-icon name="monitor" class="h-3.5 w-3.5" />
+                    Live Monitor
+                </a>
+            </div>
+
+            @if ($units->isEmpty())
+                <div class="card px-6 py-16 text-center">
+                    <x-icon name="gamepad-2" class="mx-auto h-10 w-10 text-slate-700" />
+                    <p class="mt-4 text-sm font-semibold text-slate-400">Belum ada unit yang terdaftar.</p>
+                </div>
+            @else
+                <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    @foreach ($units as $unit)
+                        @php($indicator = $unit->status->indicator())
+                        @php($session = $unit->runningSession)
+
+                        <div class="card relative overflow-hidden p-5 transition duration-200 hover:border-white/15 {{ $indicator['ring'] }}">
+                            <div class="flex items-start justify-between gap-3">
+                                <div class="min-w-0">
+                                    <p class="text-[10px] font-bold uppercase tracking-widest text-slate-500">{{ $unit->type }}</p>
+                                    <h3 class="mt-1 truncate text-base font-extrabold text-white">{{ $unit->name }}</h3>
+                                    <p class="tabular mt-0.5 text-xs text-slate-500">{{ $unit->code }}</p>
+                                </div>
+                                <span class="mt-1 h-2.5 w-2.5 shrink-0 rounded-full {{ $indicator['dot'] }}"></span>
+                            </div>
+
+                            <div class="mt-5 border-t border-white/5 pt-4">
+                                @if ($unit->status === UnitStatus::READY)
+                                    <p class="text-lg font-extrabold tracking-wide text-emerald-300">KOSONG</p>
+                                    <p class="mt-1 text-sm text-emerald-200/60">
+                                        {{ $unit->isFree()
+                                            ? 'Gratis · Open Play'
+                                            : Money::format($unit->hourly_rate).' / jam' }}
+                                    </p>
+                                @elseif ($unit->status === UnitStatus::BUSY)
+                                    <p class="text-lg font-extrabold tracking-wide text-rose-300">TERISI</p>
+                                    @if ($session)
+                                        @php($remaining = max(0, $session->remainingSeconds()))
+                                        <p class="tabular mt-1 text-sm {{ $remaining <= 0 ? 'text-amber-300' : 'text-rose-200/70' }}">
+                                            {{ $remaining <= 0
+                                                ? 'Waktu habis · segera selesai'
+                                                : 'Sisa ± '.ceil($remaining / 60).' menit · '.($session->package_name ?? 'Open Play') }}
+                                        </p>
+                                    @else
+                                        <p class="mt-1 text-sm text-rose-200/70">Sedang dipakai pengunjung</p>
+                                    @endif
+                                @else
+                                    <p class="text-lg font-extrabold tracking-wide text-amber-300">SERVIS</p>
+                                    <p class="mt-1 text-sm text-amber-200/60">Sedang dalam perbaikan</p>
+                                @endif
+                            </div>
+
+                            @if ($unit->status === UnitStatus::READY || $unit->status === UnitStatus::BUSY)
+                                <button
+                                    type="button"
+                                    @click="openBooking({{ $unit->id }})"
+                                    class="btn-primary mt-4 w-full text-xs"
+                                >
+                                    <x-icon name="calendar-days" class="h-3.5 w-3.5" />
+                                    {{ $unit->status === UnitStatus::READY ? 'Booking Konsol Ini' : 'Booking Jam Berikutnya' }}
+                                </button>
+                            @endif
+                        </div>
+                    @endforeach
+                </div>
+            @endif
+
+            {{-- ================= MODAL BOOKING ================= --}}
+            <div
+                x-cloak
+                x-show="open"
+                class="fixed inset-0 z-50"
+                x-transition.opacity.duration.200ms
+                x-on:keydown.escape.window="close()"
+            >
+                <div
+                    class="absolute inset-0 bg-black/70 backdrop-blur-sm"
+                    x-show="open"
+                    x-transition.opacity.duration.200ms
+                    x-on:click="close()"
+                ></div>
+
+                <div
+                    class="absolute inset-x-0 bottom-0 max-h-[90vh] overflow-y-auto sm:inset-x-auto sm:bottom-auto sm:top-1/2 sm:left-1/2 sm:max-h-[85vh] sm:w-full sm:max-w-lg sm:-translate-x-1/2 sm:-translate-y-1/2"
+                    x-show="open"
+                    x-transition:enter="transition ease-out duration-200"
+                    x-transition:enter-start="translate-y-4 opacity-0 sm:scale-95 sm:translate-y-0"
+                    x-transition:enter-end="translate-y-0 opacity-100 sm:scale-100"
+                    x-transition:leave="transition ease-in duration-150"
+                    x-transition:leave-start="translate-y-0 opacity-100 sm:scale-100"
+                    x-transition:leave-end="translate-y-4 opacity-0 sm:scale-95 sm:translate-y-0"
+                >
+                    <div class="card border-white/10 bg-ink-900 p-5 shadow-2xl sm:p-6">
+                        <div class="flex items-start justify-between gap-3">
+                            <div class="min-w-0">
+                                <p class="text-[10px] font-bold uppercase tracking-widest text-slate-500" x-text="unit?.type"></p>
+                                <h3 class="truncate text-base font-extrabold text-white" x-text="unit?.name"></h3>
+                                <p class="tabular text-xs text-slate-500" x-text="unit?.code"></p>
+                            </div>
+
+                            <button type="button" x-on:click="close()" class="rounded-lg p-1.5 text-slate-500 transition hover:bg-white/5 hover:text-white">
+                                <x-icon name="x" class="h-4 w-4" />
+                            </button>
+                        </div>
+
+                        <template x-if="unit?.status === 'BUSY'">
+                            <p class="mt-3 flex items-start gap-2 rounded-xl bg-rose-500/10 px-3 py-2.5 text-xs text-rose-200">
+                                <x-icon name="clock" class="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                                Unit sedang dipakai — jam mulai otomatis disesuaikan untuk slot berikutnya.
+                            </p>
+                        </template>
+
+                        {{-- RINGKASAN SUKSES --}}
+                        <template x-if="result">
+                            <div class="mt-4">
+                                <div class="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4">
+                                    <p class="flex items-center gap-2 text-sm font-bold text-emerald-300">
+                                        <x-icon name="check-circle-2" class="h-4 w-4" />
+                                        Booking berhasil!
+                                    </p>
+                                    <p class="mt-3 text-[10px] font-bold uppercase tracking-widest text-slate-500">Kode Booking</p>
+                                    <p class="text-2xl font-extrabold tracking-wider text-brand-300" x-text="result.booking_code"></p>
+
+                                    <div class="mt-3">
+                                        <span class="badge" :class="result.status.badge_class" x-text="result.status.label"></span>
+                                        <p class="mt-2 text-xs text-slate-400" x-text="result.status.hint"></p>
+                                    </div>
+
+                                    <dl class="mt-4 space-y-2 text-sm">
+                                        <div class="flex items-center justify-between gap-3">
+                                            <dt class="text-slate-500">Konsol</dt>
+                                            <dd class="font-semibold text-slate-100" x-text="result.console_name"></dd>
+                                        </div>
+                                        <div class="flex items-center justify-between gap-3">
+                                            <dt class="text-slate-500">Jadwal</dt>
+                                            <dd class="tabular text-right text-slate-100" x-text="result.start_time_label + ' → ' + result.end_time_label"></dd>
+                                        </div>
+                                        <div class="flex items-center justify-between gap-3">
+                                            <dt class="text-slate-500">Estimasi Biaya</dt>
+                                            <dd class="font-bold text-white" x-text="result.total_price_label"></dd>
+                                        </div>
+                                    </dl>
+                                </div>
+
+                                <p class="mt-3 text-xs text-slate-500">
+                                    Slot jam ini sudah terkunci untuk Anda. Unit ditandai
+                                    <strong class="font-semibold text-emerald-300">Terisi</strong> oleh kasir saat Anda mulai bermain.
+                                    Tunjukkan kode booking ini saat datang.
+                                </p>
+
+                                <button type="button" x-on:click="close()" class="btn-primary mt-4 w-full">
+                                    Selesai
+                                </button>
+                            </div>
+                        </template>
+
+                        {{-- FORM BOOKING --}}
+                        <template x-if="!result">
+                            <form class="mt-4 space-y-4" x-on:submit.prevent="submit()">
+                                <div class="rounded-xl border border-white/5 bg-ink-850 px-4 py-3 text-xs">
+                                    <p class="text-slate-500">Nama pemesan</p>
+                                    <p class="mt-0.5 font-semibold text-white">{{ auth()->user()->name }}</p>
+                                    <p class="tabular mt-1 text-slate-600">{{ auth()->user()->phone }}</p>
+                                </div>
+
+                                <div class="grid gap-4 sm:grid-cols-2">
+                                    <div>
+                                        <label for="bk-start" class="label">Jam Mulai</label>
+                                        <input id="bk-start" type="datetime-local" class="input" x-model="form.start_time">
+                                        <p class="mt-1 text-xs text-rose-400" x-text="fieldError('start_time')" x-show="fieldError('start_time')"></p>
+                                    </div>
+
+                                    <div>
+                                        <label for="bk-duration" class="label">Durasi (Jam)</label>
+                                        <input id="bk-duration" type="number" min="1" max="12" class="input" x-model.number="form.duration_hours">
+                                        <p class="mt-1 text-xs text-rose-400" x-text="fieldError('duration_hours')" x-show="fieldError('duration_hours')"></p>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label for="bk-notes" class="label">Catatan <span class="normal-case text-slate-600">(opsional)</span></label>
+                                    <textarea id="bk-notes" rows="2" class="input resize-none" placeholder="Pesan tambahan, mis. minta remote PS5" x-model="form.notes"></textarea>
+                                    <p class="mt-1 text-xs text-rose-400" x-text="fieldError('notes')" x-show="fieldError('notes')"></p>
+                                </div>
+
+                                <div class="flex items-center justify-between rounded-xl border border-white/5 bg-ink-850 px-4 py-3">
+                                    <div>
+                                        <p class="text-[10px] font-bold uppercase tracking-widest text-slate-500">Estimasi Biaya</p>
+                                        <p class="text-[10px] text-slate-600" x-text="unit?.is_free ? 'Open Play · gratis' : window.Rebite.rupiah(unit?.hourly_rate ?? 0) + ' / jam'"></p>
+                                    </div>
+                                    <p class="text-lg font-extrabold text-brand-300" x-text="pricePreview"></p>
+                                </div>
+
+                                <p class="rounded-xl bg-rose-500/10 px-3 py-2 text-xs text-rose-200" x-text="error" x-show="error"></p>
+
+                                <button type="submit" class="btn-primary w-full" x-bind:disabled="submitting">
+                                    <span x-text="submitting ? 'Mengirim...' : 'Kunci Slot & Booking'"></span>
+                                </button>
+
+                                <p class="text-center text-[11px] text-slate-600">
+                                    Slot langsung terkunci begitu dikirim. Pembayaran di kasir saat datang.
+                                </p>
+                            </form>
+                        </template>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <x-toast />
+</body>
+</html>

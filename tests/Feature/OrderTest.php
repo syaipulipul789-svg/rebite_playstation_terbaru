@@ -286,8 +286,10 @@ class OrderTest extends TestCase
     public function test_pesanan_bisa_ditautkan_ke_booking_pelanggan(): void
     {
         $unit = $this->makeUnit();
+        $customer = $this->makeCustomer();
         $booking = Booking::create([
             'console_id' => $unit->id,
+            'user_id' => $customer->id,
             'customer_name' => 'Rina Wijaya',
             'customer_phone' => '081234567890',
             'start_time' => now()->addHour(),
@@ -296,10 +298,9 @@ class OrderTest extends TestCase
             'total_price' => 12000.0,
         ]);
 
-        // Booking hanya boleh ditautkan kalau session browser ini yang
-        // membuatnya, jadi token publiknya ikut dibawa. Ini kondisi nyata
-        // setelah pelanggan membuat booking lewat `POST /booking`.
-        $this->withSession(['customer_booking_tokens' => [$booking->public_token]])
+        // Booking hanya boleh ditautkan ke akun yang membuatnya, jadi
+        // menebak kode "BK-####" milik pelanggan lain tidak menempel.
+        $this->actingAs($customer)
             ->post(route('customer.order.store'), [
                 'customer_name' => 'Rina Wijaya',
                 'customer_phone' => '081234567890',

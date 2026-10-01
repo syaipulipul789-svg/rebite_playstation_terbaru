@@ -1,19 +1,19 @@
 /**
- * Panel booking reservasi online (Tampilan Pelanggan / Public View).
+ * Panel booking untuk dashboard pelanggan (butuh login).
  *
  * Data unit yang boleh dipesan dikirim via `bookingUnits` dari
- * CustomerDisplayController@index (hanya unit READY / BUSY). Form dikirim
- * pakai axios ke POST /booking; sukses/error ditampilkan langsung di dalam
- * modal tanpa reload halaman.
+ * CustomerBookingController@index (hanya unit READY / BUSY). Form dikirim
+ * pakai axios ke endpoint `config.url`; sukses/error ditampilkan langsung di
+ * dalam modal tanpa reload halaman. Nama dan nomor WhatsApp diambil dari akun
+ * pelanggan, jadi tidak ada di form.
  */
 document.addEventListener('alpine:init', () => {
     window.Alpine.data('bookingPanel', (config = {}) => ({
         units: config.units ?? [],
+        url: config.url ?? '/customer/bookings',
         open: false,
         unit: null,
         form: {
-            customer_name: '',
-            customer_phone: '',
             start_time: '',
             duration_hours: 1,
             notes: '',
@@ -29,8 +29,6 @@ document.addEventListener('alpine:init', () => {
 
             this.unit = unit;
             this.form = {
-                customer_name: '',
-                customer_phone: '',
                 start_time: this.defaultStartTime(unit),
                 duration_hours: 1,
                 notes: '',
@@ -44,13 +42,6 @@ document.addEventListener('alpine:init', () => {
         },
 
         close() {
-            // Setelah booking dibuat, section "Booking Saya" baru muncul
-            // setelah reload karena dirender server dari session browser.
-            if (this.result) {
-                window.location.reload();
-                return;
-            }
-
             this.open = false;
             this.unit = null;
             this.unlockScroll();
@@ -103,7 +94,7 @@ document.addEventListener('alpine:init', () => {
             this.fieldErrors = {};
 
             try {
-                const { data } = await window.axios.post('/booking', {
+                const { data } = await window.axios.post(this.url, {
                     console_id: this.unit.id,
                     ...this.form,
                 });
@@ -135,15 +126,15 @@ document.addEventListener('alpine:init', () => {
     }));
 
     /**
-     * Panel "Booking Saya" di landing page.
+     * Panel "Booking Saya" di dashboard pelanggan.
      *
-     * Menampilkan status booking milik session browser ini dan polling
-     * berkala supaya pelanggan melihat perubahan "Menunggu Persetujuan" ->
-     * "Sudah Terisi" begitu kasir menyetujui, tanpa perlu refresh manual.
+     * Menampilkan status booking milik akun yang sedang login dan polling
+     * berkala supaya pelanggan melihat perubahan status "Menunggu" ->
+     * "Sudah Terisi" tanpa perlu refresh manual.
      */
     window.Alpine.data('myBookings', (config = {}) => ({
         bookings: config.initial ?? [],
-        url: config.url ?? '/booking/status',
+        url: config.url ?? '/customer/bookings/status',
         pollInterval: 10000,
         lastSync: '',
 

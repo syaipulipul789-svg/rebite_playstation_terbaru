@@ -70,15 +70,19 @@
                 @enderror
             </div>
 
-            <div>
-                <label for="co-booking" class="label">Kode Booking <span class="normal-case text-slate-600">(opsional)</span></label>
-                <input id="co-booking" name="booking_code" type="text" class="input"
-                       maxlength="20" placeholder="BK-0001" value="{{ old('booking_code') }}">
-                <p class="mt-1 text-xs text-slate-600">Masukkan kode bookingmu agar pesanan menempel ke sesi sewa.</p>
-                @error('booking_code')
-                    <p class="mt-1 text-xs text-rose-400">{{ $message }}</p>
-                @enderror
-            </div>
+            {{-- Booking sekarang milik akun, jadi hanya pelanggan yang sudah
+                 login yang boleh menempelkan pesanan ke bookingnya. --}}
+            @if (auth()->user()?->isCustomer())
+                <div>
+                    <label for="co-booking" class="label">Kode Booking <span class="normal-case text-slate-600">(opsional)</span></label>
+                    <input id="co-booking" name="booking_code" type="text" class="input"
+                           maxlength="20" placeholder="BK-0001" value="{{ old('booking_code') }}">
+                    <p class="mt-1 text-xs text-slate-600">Masukkan kode bookingmu agar pesanan menempel ke sesi sewa.</p>
+                    @error('booking_code')
+                        <p class="mt-1 text-xs text-rose-400">{{ $message }}</p>
+                    @enderror
+                </div>
+            @endif
 
             <button type="submit" class="btn-primary w-full">
                 <x-icon name="scan-line" class="h-4 w-4" />

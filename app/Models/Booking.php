@@ -19,6 +19,7 @@ class Booking extends Model
         'public_token',
         'console_id',
         'rental_session_id',
+        'user_id',
         'confirmed_by',
         'customer_name',
         'customer_phone',
@@ -66,6 +67,15 @@ class Booking extends Model
         return $this->belongsTo(User::class, 'confirmed_by');
     }
 
+    /**
+     * Akun pelanggan yang membuat booking ini. `null` untuk booking yang
+     * belum terhubung ke akun (data lama atau diinput kasir manual).
+     */
+    public function customer(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'user_id');
+    }
+
     public function orderItems(): HasMany
     {
         return $this->hasMany(Order::class);
@@ -76,19 +86,40 @@ class Booking extends Model
         return $query->where('status', $status);
     }
 
-    /**
-     * Booking milik satu session browser (daftar token publik).
-     *
-     * @param  list<string>  $tokens
-     */
-    public function scopeForTokens(Builder $query, array $tokens): Builder
+    public function scopeForCustomer(Builder $query, User $customer): Builder
     {
-        return $query->whereIn('public_token', $tokens);
+        return $query->where('user_id', $customer->id);
+    }
+
+    /**
+     * Booking yang sedang memegang slot waktu di unitnya, sehingga pelanggan
+     * lain tidak bisa membooking jam yang sama.
+     *
+     * PENDING ikut dihitung supaya dua orang tidak bisa/antre sama-sama
+     * memesan slot yang sama lalu saling gagal saat kasir mengonfirmasi.
+     * Booking yang jamnya sudah lewat tidak dihitung supaya unit tidak
+     * terkunci selamanya oleh booking yang tidak pernah sempat disetujui.
+     */
+    public function scopeHoldingSlot(Builder $query): Builder
+    {
+        return $query
+            ->whereIn('status', [BookingStatus::PENDING, BookingStatus::CONFIRMED])
+            ->where('end_time', '>', now());
     }
 
     public function isPending(): bool
     {
         return $this->status === BookingStatus::PENDING;
+    }
+
+    /**
+     * Booking ini sedang mengunci slot waktu unitnya, jadi pelanggan
+     * lain tidak boleh memakai rentang waktu yang sama.
+     */
+    public function holdsSlot(): bool
+    {
+        return in_array($this->status, [BookingStatus::PENDING, BookingStatus::CONFIRMED], true)
+            && $this->end_time->isFuture();
     }
 
     public function isConfirmed(): bool

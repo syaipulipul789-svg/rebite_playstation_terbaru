@@ -20,20 +20,20 @@ use Tests\TestCase;
 
 class BookingTest extends TestCase
 {
-    public function test_tamu_dapat_membuat_booking_pending_pada_unit_ready(): void
+    public function test_pelanggan_dapat_membuat_booking_pending_pada_unit_ready(): void
     {
+        $customer = $this->makeCustomer();
+
         $unit = $this->makeUnit(['hourly_rate' => 12000]);
 
-        $response = $this->from(route('customer.home'))->post(route('booking.store'), [
+        $response = $this->actingAs($customer)->from(route('customer.dashboard'))->post(route('customer.bookings.store'), [
             'console_id' => $unit->id,
-            'customer_name' => 'Budi Santoso',
-            'customer_phone' => '081234567890',
             'start_time' => now()->addHours(2)->format('Y-m-d H:i'),
             'duration_hours' => 2,
             'notes' => 'Minta remote PS5',
         ]);
 
-        $response->assertRedirect(route('customer.home'));
+        $response->assertRedirect(route('customer.dashboard'));
 
         $booking = Booking::query()->where('console_id', $unit->id)->firstOrFail();
 
@@ -45,12 +45,12 @@ class BookingTest extends TestCase
 
     public function test_booking_melalui_ajax_mengembalikan_ringkasan_json(): void
     {
+        $customer = $this->makeCustomer();
+
         $unit = $this->makeUnit(['hourly_rate' => 10000]);
 
-        $this->postJson(route('booking.store'), [
+        $this->actingAs($customer)->postJson(route('customer.bookings.store'), [
             'console_id' => $unit->id,
-            'customer_name' => 'Sinta',
-            'customer_phone' => '081234567890',
             'start_time' => now()->addHours(1)->format('Y-m-d H:i'),
             'duration_hours' => 1,
         ])->assertCreated()
@@ -70,13 +70,13 @@ class BookingTest extends TestCase
 
     public function test_status_booking_menunggu_sampai_kasir_menyetujui_lalu_menjadi_terisi(): void
     {
+        $customer = $this->makeCustomer();
+
         $unit = $this->makeUnit(['hourly_rate' => 10000]);
         $start = now()->addHours(1)->startOfHour();
 
-        $this->postJson(route('booking.store'), [
+        $this->actingAs($customer)->postJson(route('customer.bookings.store'), [
             'console_id' => $unit->id,
-            'customer_name' => 'Sinta',
-            'customer_phone' => '081234567890',
             'start_time' => $start->format('Y-m-d H:i'),
             'duration_hours' => 2,
         ])->assertCreated();
@@ -84,7 +84,7 @@ class BookingTest extends TestCase
         $booking = Booking::query()->where('console_id', $unit->id)->firstOrFail();
 
         // 1. Right after submitting: waiting for cashier approval.
-        $this->getJson(route('booking.status'))
+        $this->actingAs($customer)->getJson(route('customer.bookings.status'))
             ->assertOk()
             ->assertJsonPath('bookings.0.code', $booking->bookingCode())
             ->assertJsonPath('bookings.0.status.value', BookingStatus::PENDING->value)
@@ -101,7 +101,7 @@ class BookingTest extends TestCase
             ->post(route('pos.bookings.confirm', $booking))
             ->assertRedirect(route('pos.bookings'));
 
-        $this->getJson(route('booking.status'))
+        $this->actingAs($customer)->getJson(route('customer.bookings.status'))
             ->assertOk()
             ->assertJsonPath('bookings.0.status.value', BookingStatus::CONFIRMED->value)
             ->assertJsonPath('bookings.0.status.label', 'Disetujui')
@@ -111,7 +111,7 @@ class BookingTest extends TestCase
         $this->travelTo($start->copy()->addMinutes(5));
         $this->artisan('bookings:promote')->assertSuccessful();
 
-        $this->getJson(route('booking.status'))
+        $this->actingAs($customer)->getJson(route('customer.bookings.status'))
             ->assertOk()
             ->assertJsonPath('bookings.0.status.value', BookingStatus::CONFIRMED->value)
             ->assertJsonPath('bookings.0.status.label', 'Sudah Terisi')
@@ -120,14 +120,14 @@ class BookingTest extends TestCase
 
     public function test_booking_yang_dibatalkan_terlihat_sebagai_dibatalkan(): void
     {
+        $customer = $this->makeCustomer();
+
         $cashier = $this->makeCashier();
         $this->makeOpenShift($cashier);
         $unit = $this->makeUnit();
 
-        $this->postJson(route('booking.store'), [
+        $this->actingAs($customer)->postJson(route('customer.bookings.store'), [
             'console_id' => $unit->id,
-            'customer_name' => 'Rudi',
-            'customer_phone' => '081234567890',
             'start_time' => now()->addHours(1)->format('Y-m-d H:i'),
             'duration_hours' => 1,
         ])->assertCreated();
@@ -139,31 +139,32 @@ class BookingTest extends TestCase
             ->post(route('pos.bookings.cancel', $booking))
             ->assertRedirect(route('pos.bookings'));
 
-        $this->getJson(route('booking.status'))
+        $this->actingAs($customer)->getJson(route('customer.bookings.status'))
             ->assertOk()
             ->assertJsonPath('bookings.0.status.value', BookingStatus::CANCELLED->value)
             ->assertJsonPath('bookings.0.status.label', 'Dibatalkan');
     }
 
-    public function test_halaman_status_booking_hanya_menampilkan_booking_milik_session(): void
+    public function test_daftar_booking_hanya_menampilkan_booking_milik_akun(): void
     {
+        $customer = $this->makeCustomer();
+
         $unit = $this->makeUnit();
 
-        $this->postJson(route('booking.store'), [
+        $this->actingAs($customer)->postJson(route('customer.bookings.store'), [
             'console_id' => $unit->id,
-            'customer_name' => 'Sinta',
-            'customer_phone' => '081234567890',
             'start_time' => now()->addHours(1)->format('Y-m-d H:i'),
             'duration_hours' => 1,
         ])->assertCreated();
 
         $mine = Booking::query()->where('console_id', $unit->id)->firstOrFail();
 
-        // Booking milik orang lain yang dibuat di luar session ini.
+        // Booking milik pelanggan lain pada akun yang berbeda.
         $otherUnit = $this->makeUnit(['code' => 'PS5-99', 'name' => 'PS5 Lain']);
         $other = Booking::create([
             'console_id' => $otherUnit->id,
-            'customer_name' => 'Orang Lain',
+            'user_id' => $this->makeCustomer('081298765432', ['name' => 'Pelanggan Lain'])->id,
+            'customer_name' => 'Pelanggan Lain',
             'customer_phone' => '089999999999',
             'start_time' => now()->addHours(1),
             'end_time' => now()->addHours(2),
@@ -171,7 +172,7 @@ class BookingTest extends TestCase
             'total_price' => 10000,
         ]);
 
-        $response = $this->getJson(route('booking.status'))->assertOk();
+        $response = $this->actingAs($customer)->getJson(route('customer.bookings.status'))->assertOk();
 
         $response->assertJsonCount(1, 'bookings')
             ->assertJsonPath('bookings.0.code', $mine->bookingCode());
@@ -187,7 +188,8 @@ class BookingTest extends TestCase
         $victimUnit = $this->makeUnit();
         $victim = Booking::create([
             'console_id' => $victimUnit->id,
-            'customer_name' => 'Budi',
+            'user_id' => $this->makeCustomer('081234567890')->id,
+            'customer_name' => 'Budi Santoso',
             'customer_phone' => '081234567890',
             'start_time' => now()->addHours(1),
             'end_time' => now()->addHours(2),
@@ -205,11 +207,13 @@ class BookingTest extends TestCase
             'is_active' => true,
         ]);
 
-        // Session pemesan tidak pernah memegang token booking milik korban,
-        // jadi menebak kode "BK-####" tidak boleh attaching apa pun.
-        $this->post(route('customer.order.store'), [
+        // Booking hanya boleh ditautkan ke akun pemiliknya, jadi menebak
+        // kode "BK-####" milik pelanggan lain tidak boleh apa pun.
+        $attacker = $this->makeCustomer('081298765432', ['name' => 'Pemesan']);
+
+        $this->actingAs($attacker)->post(route('customer.order.store'), [
             'customer_name' => 'Pemesan',
-            'customer_phone' => '081234567890',
+            'customer_phone' => '081298765432',
             'unit_id' => $ownUnit->id,
             'booking_code' => $victim->bookingCode(),
         ])->assertRedirect(route('customer.order.index'));
@@ -232,6 +236,8 @@ class BookingTest extends TestCase
 
     public function test_booking_unit_yang_sedang_dipakai_untuk_jam_berikutnya_diizinkan(): void
     {
+        $customer = $this->makeCustomer();
+
         $cashier = $this->makeCashier();
         $shift = $this->makeOpenShift($cashier);
         $unit = $this->makeUnit(['status' => UnitStatus::BUSY]);
@@ -239,10 +245,8 @@ class BookingTest extends TestCase
         $this->startRunningSession($cashier, $shift, $unit, minutesAgo: 30, plannedMinutes: 60);
         $sessionEnd = now()->addMinutes(30);
 
-        $this->post(route('booking.store'), [
+        $this->actingAs($customer)->post(route('customer.bookings.store'), [
             'console_id' => $unit->id,
-            'customer_name' => 'Agus',
-            'customer_phone' => '081234567890',
             'start_time' => $sessionEnd->addMinutes(30)->format('Y-m-d H:i'),
             'duration_hours' => 1,
         ])->assertRedirect();
@@ -252,16 +256,16 @@ class BookingTest extends TestCase
 
     public function test_booking_ditolak_saat_bentrok_dengan_sesi_rental_berjalan(): void
     {
+        $customer = $this->makeCustomer();
+
         $cashier = $this->makeCashier();
         $shift = $this->makeOpenShift($cashier);
         $unit = $this->makeUnit(['status' => UnitStatus::BUSY]);
 
         $this->startRunningSession($cashier, $shift, $unit, minutesAgo: 30, plannedMinutes: 60);
 
-        $this->from(route('customer.home'))->post(route('booking.store'), [
+        $this->actingAs($customer)->from(route('customer.dashboard'))->post(route('customer.bookings.store'), [
             'console_id' => $unit->id,
-            'customer_name' => 'Agus',
-            'customer_phone' => '081234567890',
             'start_time' => now()->addMinutes(15)->format('Y-m-d H:i'),
             'duration_hours' => 1,
         ])->assertSessionHasErrors('start_time');
@@ -271,12 +275,12 @@ class BookingTest extends TestCase
 
     public function test_booking_unit_dalam_servis_ditolak(): void
     {
+        $customer = $this->makeCustomer();
+
         $unit = $this->makeUnit(['status' => UnitStatus::MAINTENANCE]);
 
-        $this->from(route('customer.home'))->post(route('booking.store'), [
+        $this->actingAs($customer)->from(route('customer.dashboard'))->post(route('customer.bookings.store'), [
             'console_id' => $unit->id,
-            'customer_name' => 'Dewi',
-            'customer_phone' => '081234567890',
             'start_time' => now()->addHours(1)->format('Y-m-d H:i'),
             'duration_hours' => 1,
         ])->assertSessionHasErrors('console_id');
@@ -286,15 +290,15 @@ class BookingTest extends TestCase
 
     public function test_booking_ditolak_saat_bentrok_dengan_booking_confirm_lain(): void
     {
+        $customer = $this->makeCustomer();
+
         $unit = $this->makeUnit();
         $start = now()->addHours(2)->startOfHour();
 
         $this->makeBooking($unit, $start, BookingStatus::CONFIRMED);
 
-        $this->from(route('customer.home'))->post(route('booking.store'), [
+        $this->actingAs($customer)->from(route('customer.dashboard'))->post(route('customer.bookings.store'), [
             'console_id' => $unit->id,
-            'customer_name' => 'Eko',
-            'customer_phone' => '081234567890',
             'start_time' => $start->copy()->addMinutes(30)->format('Y-m-d H:i'),
             'duration_hours' => 1,
         ])->assertSessionHasErrors('start_time');
@@ -302,32 +306,32 @@ class BookingTest extends TestCase
         $this->assertDatabaseCount('bookings', 1);
     }
 
-    public function test_booking_pending_tidak_menghalangi_booking_pending_lain(): void
+    public function test_booking_pending_menahan_booking_pelanggan_lain(): void
     {
+        $customer = $this->makeCustomer();
+
         $unit = $this->makeUnit();
         $start = now()->addHours(2)->startOfHour();
 
         $this->makeBooking($unit, $start, BookingStatus::PENDING);
 
-        $this->post(route('booking.store'), [
+        $this->actingAs($customer)->from(route('customer.dashboard'))->post(route('customer.bookings.store'), [
             'console_id' => $unit->id,
-            'customer_name' => 'Fajar',
-            'customer_phone' => '081234567890',
             'start_time' => $start->copy()->addMinutes(30)->format('Y-m-d H:i'),
             'duration_hours' => 1,
-        ])->assertRedirect();
+        ])->assertSessionHasErrors('start_time');
 
-        $this->assertDatabaseCount('bookings', 2);
+        $this->assertDatabaseCount('bookings', 1);
     }
 
     public function test_booking_tidak_boleh_dimulai_di_masa_lalu(): void
     {
+        $customer = $this->makeCustomer();
+
         $unit = $this->makeUnit();
 
-        $this->from(route('customer.home'))->post(route('booking.store'), [
+        $this->actingAs($customer)->from(route('customer.dashboard'))->post(route('customer.bookings.store'), [
             'console_id' => $unit->id,
-            'customer_name' => 'Gita',
-            'customer_phone' => '081234567890',
             'start_time' => now()->subHour()->format('Y-m-d H:i'),
             'duration_hours' => 1,
         ])->assertSessionHasErrors('start_time');
@@ -622,7 +626,6 @@ class BookingTest extends TestCase
         $this->actingAs($cashier)
             ->get(route('pos.bookings'))
             ->assertOk()
-            ->assertDontSee('Kirim WA Konfirmasi')
             ->assertDontSee('wa.me', escape: false);
     }
 
@@ -648,11 +651,10 @@ class BookingTest extends TestCase
 
     public function test_nomor_wa_me_dinormalkan_dari_beberapa_cara_penulisan(): void
     {
-        $this->assertSame('628123456789', Phone::whatsappNumber('081234567890'));
-        $this->assertSame('628123456789', Phone::whatsappNumber('+62 812-3456-7890'));
-        $this->assertSame('628123456789', Phone::whatsappNumber('628123456789'));
-        $this->assertSame('628123456789', Phone::whatsappNumber('81234567890'));
-        $this->assertSame('6281234567890', Phone::whatsappNumber('0812345678900'));
+        $this->assertSame('6281234567890', Phone::whatsappNumber('081234567890'));
+        $this->assertSame('6281234567890', Phone::whatsappNumber('+62 812-3456-7890'));
+        $this->assertSame('6281234567890', Phone::whatsappNumber('6281234567890'));
+        $this->assertSame('6281234567890', Phone::whatsappNumber('81234567890'));
 
         $this->assertNull(Phone::whatsappNumber('ADWD'));
         $this->assertNull(Phone::whatsappNumber('w2121easad'));

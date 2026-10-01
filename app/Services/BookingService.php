@@ -24,7 +24,7 @@ final class BookingService
 
     /**
      * Buat booking pending untuk satu konsol dengan pengecekan bentrok
-     * jadwal (sesi rental berjalan + booking confirmed lain).
+     * jadwal (sesi rental berjalan + booking lain yang memegang slot).
      */
     public function create(
         Unit $unit,
@@ -33,8 +33,9 @@ final class BookingService
         Carbon $start,
         Carbon $end,
         ?string $notes,
+        ?User $customer = null,
     ): Booking {
-        return DB::transaction(function () use ($unit, $customerName, $customerPhone, $start, $end, $notes) {
+        return DB::transaction(function () use ($unit, $customerName, $customerPhone, $start, $end, $notes, $customer) {
             $locked = Unit::query()->lockForUpdate()->findOrFail($unit->id);
 
             if (! in_array($locked->status, [UnitStatus::READY, UnitStatus::BUSY], true)) {
@@ -50,6 +51,7 @@ final class BookingService
 
             return Booking::create([
                 'console_id' => $locked->id,
+                'user_id' => $customer?->id,
                 'customer_name' => $customerName,
                 'customer_phone' => $customerPhone,
                 'start_time' => $start,
@@ -59,6 +61,31 @@ final class BookingService
                 'notes' => $notes,
             ]);
         });
+    }
+
+    /**
+     * Booking yang dibuat pelanggan dari akunnya sendiri.
+     *
+     * Nama dan nomor WhatsApp diambil dari akun, bukan dari form, supaya
+     * kasir selalu punya kontak yang bisa ditelepon dan riwayat booking
+     * terhubung ke akun yang bisa dibuka lagi dari perangkat lain.
+     */
+    public function createForCustomer(
+        User $customer,
+        Unit $unit,
+        Carbon $start,
+        Carbon $end,
+        ?string $notes,
+    ): Booking {
+        return $this->create(
+            unit: $unit,
+            customerName: $customer->name,
+            customerPhone: $customer->phone,
+            start: $start,
+            end: $end,
+            notes: $notes,
+            customer: $customer,
+        );
     }
 
     /**
@@ -266,7 +293,8 @@ final class BookingService
 
     /**
      * Pastikan rentang [start, end) tidak bertabrakan dengan sesi rental yang
-     * sedang berjalan maupun booking CONFIRMED lain pada konsol yang sama.
+     * sedang berjalan maupun booking lain yang sedang memegang slot
+     * (PENDING maupun CONFIRMED) pada konsol yang sama.
      */
     private function assertNoConflict(Unit $unit, Carbon $start, Carbon $end, ?int $ignoreBookingId = null): void
     {
@@ -287,15 +315,15 @@ final class BookingService
 
         $overlap = Booking::query()
             ->where('console_id', $unit->id)
-            ->where('status', BookingStatus::CONFIRMED)
             ->when($ignoreBookingId !== null, fn ($query) => $query->where('id', '!=', $ignoreBookingId))
+            ->holdingSlot()
             ->where('start_time', '<', $end)
             ->where('end_time', '>', $start)
             ->exists();
 
         if ($overlap) {
             throw ValidationException::withMessages([
-                'start_time' => 'Jadwal bentrok dengan booking lain yang sudah dikonfirmasi pada unit ini.',
+                'start_time' => 'Jadwal bentrok dengan booking lain yang sedang memakai unit ini di jam tersebut.',
             ]);
         }
     }

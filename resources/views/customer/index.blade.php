@@ -36,7 +36,13 @@
                     <span class="text-sm font-extrabold uppercase tracking-widest text-white">{{ config('app.name') }}</span>
                 </div>
 
-                <a href="{{ route('login') }}" class="btn-subtle">Login Kasir</a>
+                <div class="flex items-center gap-2">
+                    <a href="{{ route('login') }}" class="btn-subtle">Masuk</a>
+                    <a href="{{ route('register') }}" class="btn-primary">
+                        <x-icon name="user-plus" class="h-4 w-4" />
+                        Daftar Pelanggan
+                    </a>
+                </div>
             </nav>
 
             {{-- Konten hero --}}
@@ -79,6 +85,10 @@
                         <x-icon name="search" class="h-4 w-4" />
                         Cek Status Booking
                     </a>
+                    <a href="{{ route('register') }}" class="btn-ghost">
+                        <x-icon name="calendar-days" class="h-4 w-4" />
+                        Booking Konsol Online
+                    </a>
                 </div>
             </div>
         </div>
@@ -86,66 +96,37 @@
 
     <main class="mx-auto max-w-6xl space-y-20 px-4 pb-20 sm:px-6">
 
-        {{-- ================= BOOKING SAYA (POLLING STATUS) ================= --}}
-        @if (count($myBookings) > 0)
-            <section
-                aria-label="Status booking saya"
-                x-data="myBookings({ initial: {{ Js::from($myBookings) }}, url: @js(route('booking.status')) })"
-            >
-                <div class="mb-4 flex flex-wrap items-end justify-between gap-3">
-                    <div>
-                        <h2 class="text-lg font-bold text-white">Booking Saya</h2>
-                        <p class="mt-1 text-sm text-slate-400">
-                            Status berubah otomatis setelah kasir menyetujui.
-                        </p>
-                    </div>
-                    <p class="text-xs text-slate-500" x-show="lastSync" x-text="lastSync"></p>
+        {{-- ================= AJAKAN DAFTAR (booking wajib login) ================= --}}
+        <section aria-label="Booking konsol online" class="lg:-mt-10">
+            <div class="card grid gap-6 p-6 ring-1 ring-inset ring-brand-500/20 sm:p-8 lg:grid-cols-[1fr_auto] lg:items-center">
+                <div>
+                    <h2 class="text-xl font-extrabold text-white sm:text-2xl">
+                        Booking konsol tanpa datang duluan
+                    </h2>
+                    <p class="mt-2 max-w-2xl text-sm leading-relaxed text-slate-400">
+                        Daftar sekali pakai nomor WhatsApp, lalu pilih unit yang kosong beserta jam mainnya.
+                        Slot langsung terkunci untuk Anda, dan status unit berubah jadi
+                        <strong class="font-semibold text-emerald-300">Terisi</strong> selama Anda bermain —
+                        pelanggan lain langsung melihatnya berubah.
+                    </p>
+                    <p class="mt-3 text-sm text-slate-500">
+                        Sudah punya akun?
+                        <a href="{{ route('login') }}" class="font-semibold text-brand-300 hover:text-brand-200">Masuk di sini</a>.
+                    </p>
                 </div>
 
-                <p class="mb-4 text-xs text-slate-500">
-                    Pindah perangkat atau cookie terhapus?
-                    <a href="{{ route('booking.check') }}" class="font-semibold text-brand-300 hover:text-brand-200">Cek lewat kode booking</a>.
-                </p>
-
-                <div class="space-y-3">
-                    <template x-for="booking in bookings" :key="booking.code">
-                        <article class="card overflow-hidden p-5">
-                            <div class="flex flex-wrap items-start justify-between gap-3">
-                                <div>
-                                    <p class="text-[10px] font-bold uppercase tracking-widest text-slate-500">Kode Booking</p>
-                                    <p class="text-2xl font-extrabold tracking-wider text-brand-300" x-text="booking.code"></p>
-                                </div>
-                                <span class="badge" :class="booking.status.badge_class" x-text="booking.status.label"></span>
-                            </div>
-
-                            <p class="mt-3 text-sm text-slate-300" x-text="booking.status.hint"></p>
-
-                            <dl class="mt-4 grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
-                                <div>
-                                    <dt class="text-slate-500">Konsol</dt>
-                                    <dd class="font-semibold text-white">
-                                        <span x-text="booking.console_name"></span>
-                                        <span class="tabular text-slate-500" x-text="booking.console_code"></span>
-                                    </dd>
-                                </div>
-                                <div>
-                                    <dt class="text-slate-500">Jadwal</dt>
-                                    <dd class="tabular text-slate-300" x-text="booking.start_time_label + ' → ' + booking.end_time_label"></dd>
-                                </div>
-                                <div>
-                                    <dt class="text-slate-500">Perkiraan Biaya</dt>
-                                    <dd class="font-bold text-white" x-text="booking.total_price_label"></dd>
-                                </div>
-                                <div x-show="booking.remaining_seconds !== null">
-                                    <dt class="text-slate-500">Sisa Waktu</dt>
-                                    <dd class="tabular font-bold text-emerald-300" x-text="remainingLabel(booking)"></dd>
-                                </div>
-                            </dl>
-                        </article>
-                    </template>
+                <div class="flex flex-col gap-3 sm:flex-row lg:flex-col">
+                    <a href="{{ route('register') }}" class="btn-primary whitespace-nowrap">
+                        <x-icon name="user-plus" class="h-4 w-4" />
+                        Daftar Gratis
+                    </a>
+                    <a href="{{ route('login') }}" class="btn-ghost whitespace-nowrap">
+                        <x-icon name="log-in" class="h-4 w-4" />
+                        Sudah Daftar
+                    </a>
                 </div>
-            </section>
-        @endif
+            </div>
+        </section>
 
         {{-- ================= RINGKASAN STATUS ================= --}}
         <section aria-label="Ringkasan ketersediaan unit" class="lg:-mt-10">
@@ -170,11 +151,7 @@
         </section>
 
         {{-- ================= STATUS UNIT PS ================= --}}
-        <section
-            id="units"
-            class="scroll-mt-8"
-            x-data="bookingPanel({ units: {{ Js::from($bookingUnits) }} })"
-        >
+        <section id="units" class="scroll-mt-8">
             <div class="mb-6 flex flex-wrap items-end justify-between gap-3">
                 <div>
                     <h2 class="text-2xl font-extrabold text-white sm:text-3xl">Ketersediaan Unit</h2>
@@ -233,167 +210,21 @@
                                 @endif
                             </div>
 
-                            @if ($unit->status === UnitStatus::READY || $unit->status === UnitStatus::BUSY)
-                                <button
-                                    type="button"
-                                    @click="openBooking({{ $unit->id }})"
-                                    class="btn-primary mt-4 w-full text-xs"
-                                >
+                            @if ($unit->status === UnitStatus::READY)
+                                <a href="{{ route('login') }}" class="btn-primary mt-4 w-full text-xs">
                                     <x-icon name="calendar-days" class="h-3.5 w-3.5" />
-                                    {{ $unit->status === UnitStatus::READY ? 'Booking Konsol Ini' : 'Booking Jam Berikutnya' }}
-                                </button>
+                                    Booking Konsol Ini
+                                </a>
+                            @elseif ($unit->status === UnitStatus::BUSY)
+                                <a href="{{ route('login') }}" class="btn-primary mt-4 w-full text-xs">
+                                    <x-icon name="calendar-days" class="h-3.5 w-3.5" />
+                                    Booking Jam Berikutnya
+                                </a>
                             @endif
                         </div>
                     @endforeach
                 </div>
             @endif
-
-            {{-- ================= MODAL BOOKING ================= --}}
-            <div
-                x-cloak
-                x-show="open"
-                class="fixed inset-0 z-50"
-                x-transition.opacity.duration.200ms
-                x-on:keydown.escape.window="close()"
-            >
-                <div
-                    class="absolute inset-0 bg-black/70 backdrop-blur-sm"
-                    x-show="open"
-                    x-transition.opacity.duration.200ms
-                    x-on:click="close()"
-                ></div>
-
-                <div
-                    class="absolute inset-x-0 bottom-0 max-h-[90vh] overflow-y-auto sm:inset-x-auto sm:bottom-auto sm:top-1/2 sm:left-1/2 sm:max-h-[85vh] sm:w-full sm:max-w-lg sm:-translate-x-1/2 sm:-translate-y-1/2"
-                    x-show="open"
-                    x-transition:enter="transition ease-out duration-200"
-                    x-transition:enter-start="translate-y-4 opacity-0 sm:scale-95 sm:translate-y-0"
-                    x-transition:enter-end="translate-y-0 opacity-100 sm:scale-100"
-                    x-transition:leave="transition ease-in duration-150"
-                    x-transition:leave-start="translate-y-0 opacity-100 sm:scale-100"
-                    x-transition:leave-end="translate-y-4 opacity-0 sm:scale-95 sm:translate-y-0"
-                >
-                    <div class="card border-white/10 bg-ink-900 p-5 shadow-2xl sm:p-6">
-                        <div class="flex items-start justify-between gap-3">
-                            <div class="min-w-0">
-                                <p class="text-[10px] font-bold uppercase tracking-widest text-slate-500" x-text="unit?.type"></p>
-                                <h3 class="truncate text-base font-extrabold text-white" x-text="unit?.name"></h3>
-                                <p class="tabular text-xs text-slate-500" x-text="unit?.code"></p>
-                            </div>
-
-                            <button type="button" x-on:click="close()" class="rounded-lg p-1.5 text-slate-500 transition hover:bg-white/5 hover:text-white">
-                                <x-icon name="x" class="h-4 w-4" />
-                            </button>
-                        </div>
-
-                        <template x-if="unit?.status === 'BUSY'">
-                            <p class="mt-3 flex items-start gap-2 rounded-xl bg-rose-500/10 px-3 py-2.5 text-xs text-rose-200">
-                                <x-icon name="clock" class="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                                Unit sedang dipakai — jam mulai otomatis disesuaikan untuk slot berikutnya.
-                            </p>
-                        </template>
-
-                        {{-- RINGKASAN SUKSES --}}
-                        <template x-if="result">
-                            <div class="mt-4">
-                                <div class="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4">
-                                    <p class="flex items-center gap-2 text-sm font-bold text-emerald-300">
-                                        <x-icon name="check-circle-2" class="h-4 w-4" />
-                                        Booking diajukan!
-                                    </p>
-                                    <p class="mt-3 text-[10px] font-bold uppercase tracking-widest text-slate-500">Kode Booking</p>
-                                    <p class="text-2xl font-extrabold tracking-wider text-brand-300" x-text="result.booking_code"></p>
-
-                                    <div class="mt-3">
-                                        <span class="badge" :class="result.status.badge_class" x-text="result.status.label"></span>
-                                        <p class="mt-2 text-xs text-slate-400" x-text="result.status.hint"></p>
-                                    </div>
-
-                                    <dl class="mt-4 space-y-2 text-sm">
-                                        <div class="flex items-center justify-between gap-3">
-                                            <dt class="text-slate-500">Konsol</dt>
-                                            <dd class="font-semibold text-slate-100" x-text="result.console_name"></dd>
-                                        </div>
-                                        <div class="flex items-center justify-between gap-3">
-                                            <dt class="text-slate-500">Jadwal</dt>
-                                            <dd class="tabular text-right text-slate-100" x-text="result.start_time_label + ' → ' + result.end_time_label"></dd>
-                                        </div>
-                                        <div class="flex items-center justify-between gap-3">
-                                            <dt class="text-slate-500">Estimasi Biaya</dt>
-                                            <dd class="font-bold text-white" x-text="result.total_price_label"></dd>
-                                        </div>
-                                    </dl>
-                                </div>
-
-                                <p class="mt-3 text-xs text-slate-500">
-                                    Tunjukkan kode booking ke kasir saat datang. Pembayaran dilakukan langsung di tempat
-                                    setelah kasir menyetujui.
-                                </p>
-
-                                <button type="button" x-on:click="close()" class="btn-primary mt-4 w-full">
-                                    Pantau Status Booking
-                                </button>
-                            </div>
-                        </template>
-
-                        {{-- FORM BOOKING --}}
-                        <template x-if="!result">
-                            <form class="mt-4 space-y-4" x-on:submit.prevent="submit()">
-                                <div>
-                                    <label for="bk-name" class="label">Nama</label>
-                                    <input id="bk-name" type="text" class="input" placeholder="Nama lengkap" x-model="form.customer_name">
-                                    <p class="mt-1 text-xs text-rose-400" x-text="fieldError('customer_name')" x-show="fieldError('customer_name')"></p>
-                                </div>
-
-                                <div>
-                                    <label for="bk-phone" class="label">No. WhatsApp</label>
-                                    <input id="bk-phone" type="tel" class="input" placeholder="08xxxxxxxxxx" x-model="form.customer_phone">
-                                    <p class="mt-1 text-xs text-rose-400" x-text="fieldError('customer_phone')" x-show="fieldError('customer_phone')"></p>
-                                </div>
-
-                                <div class="grid gap-4 sm:grid-cols-2">
-                                    <div>
-                                        <label for="bk-start" class="label">Jam Mulai</label>
-                                        <input id="bk-start" type="datetime-local" class="input" x-model="form.start_time">
-                                        <p class="mt-1 text-xs text-rose-400" x-text="fieldError('start_time')" x-show="fieldError('start_time')"></p>
-                                    </div>
-
-                                    <div>
-                                        <label for="bk-duration" class="label">Durasi (Jam)</label>
-                                        <input id="bk-duration" type="number" min="1" max="12" class="input" x-model.number="form.duration_hours">
-                                        <p class="mt-1 text-xs text-rose-400" x-text="fieldError('duration_hours')" x-show="fieldError('duration_hours')"></p>
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <label for="bk-notes" class="label">Catatan <span class="normal-case text-slate-600">(opsional)</span></label>
-                                    <textarea id="bk-notes" rows="2" class="input resize-none" placeholder="Pesan tambahan, mis. minta remote PS5" x-model="form.notes"></textarea>
-                                    <p class="mt-1 text-xs text-rose-400" x-text="fieldError('notes')" x-show="fieldError('notes')"></p>
-                                </div>
-
-                                <div class="flex items-center justify-between rounded-xl border border-white/5 bg-ink-850 px-4 py-3">
-                                    <div>
-                                        <p class="text-[10px] font-bold uppercase tracking-widest text-slate-500">Estimasi Biaya</p>
-                                        <p class="text-[10px] text-slate-600" x-text="unit?.is_free ? 'Open Play · gratis' : window.Rebite.rupiah(unit?.hourly_rate ?? 0) + ' / jam'"></p>
-                                    </div>
-                                    <p class="text-lg font-extrabold text-brand-300" x-text="pricePreview"></p>
-                                </div>
-
-                                <p class="rounded-xl bg-rose-500/10 px-3 py-2 text-xs text-rose-200" x-text="error" x-show="error"></p>
-
-                                <button type="submit" class="btn-primary w-full" x-bind:disabled="submitting">
-                                    <span x-text="submitting ? 'Mengirim...' : 'Kirim Booking'"></span>
-                                </button>
-
-                                <p class="text-center text-[11px] text-slate-600">
-                                    Booking masuk sebagai <span class="text-slate-400">menunggu konfirmasi</span> — kasir
-                                    akan menyetujui sebelum jadwal berjalan.
-                                </p>
-                            </form>
-                        </template>
-                    </div>
-                </div>
-            </div>
         </section>
 
         {{-- ================= KATALOG PAKET HARGA ================= --}}

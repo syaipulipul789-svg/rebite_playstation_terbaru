@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\CheckActiveShift;
 use App\Http\Middleware\EnsureUserIsCashier;
+use App\Http\Middleware\EnsureUserIsCustomer;
 use App\Http\Middleware\EnsureUserIsOwner;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -18,6 +19,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'shift.active' => CheckActiveShift::class,
             'role.owner' => EnsureUserIsOwner::class,
             'role.cashier' => EnsureUserIsCashier::class,
+            'role.customer' => EnsureUserIsCustomer::class,
         ]);
 
         $middleware->redirectGuestsTo(fn () => route('login'));

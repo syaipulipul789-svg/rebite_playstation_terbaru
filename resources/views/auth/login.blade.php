@@ -5,7 +5,9 @@
 @section('content')
     <div class="mb-6">
         <h2 class="text-lg font-bold text-white">Masuk ke akun Anda</h2>
-        <p class="mt-1 text-sm text-slate-500">Gunakan username kasir atau owner yang terdaftar.</p>
+        <p class="mt-1 text-sm text-slate-500">
+            Pelanggan masuk pakai nomor WhatsApp, kasir dan owner pakai username.
+        </p>
     </div>
 
     <form
@@ -18,7 +20,7 @@
 
         <x-input
             name="username"
-            label="Username"
+            label="Nomor WhatsApp atau Username"
             :value="old('username')"
             autocomplete="username"
             autofocus
@@ -75,5 +77,12 @@
                 <code class="rounded bg-white/5 px-2 py-0.5 font-mono text-slate-300">kasir01 / password</code>
             </div>
         </div>
+
+        <p class="mt-3 text-center text-xs text-slate-500">
+            Pelanggan belum punya akun?
+            <a href="{{ route('register') }}" class="font-semibold text-brand-400 hover:text-brand-300">
+                Daftar gratis
+            </a>
+        </p>
     </div>
 @endsection
