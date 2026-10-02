@@ -93,7 +93,21 @@
                             <p class="tabular text-lg font-extrabold text-white">{{ Money::format($order->total_price) }}</p>
                             <p class="text-[10px] text-slate-500">{{ $order->itemCount() }} item</p>
 
-                            @if ($order->status === OrderStatus::PLACED)
+                            @if ($order->rental_session_id !== null)
+                                {{-- Order QR meja: dibayar satu kali bersama sewa
+                                     unit, jadi tombol terima bayar manual dimatikan. --}}
+                                <span class="badge {{ $order->status->badgeClass() }} text-[10px]">
+                                    <x-icon name="qr-code" class="h-3 w-3" />
+                                    QR Meja
+                                </span>
+
+                                <a
+                                    href="{{ route('units.index') }}"
+                                    class="text-[11px] font-semibold text-brand-300 hover:underline"
+                                >
+                                    Bayar saat checkout sewa
+                                </a>
+                            @elseif ($order->status === OrderStatus::PLACED)
                                 <form method="POST" action="{{ route('pos.orders.settle', $order) }}"
                                       class="flex flex-wrap items-center justify-end gap-1.5">
                                     @csrf

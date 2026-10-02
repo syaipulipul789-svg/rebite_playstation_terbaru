@@ -9,6 +9,7 @@ use App\Models\AuditLog;
 use App\Models\RatePackage;
 use App\Models\Unit;
 use App\Services\AuditLogger;
+use App\Support\TableQr;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -47,6 +48,42 @@ class UnitMasterController extends Controller
                 ->distinct()
                 ->orderBy('unit_type')
                 ->pluck('unit_type'),
+            'filters' => $filters,
+        ]);
+    }
+
+    /**
+     * Lembar QR untuk dicetak dan ditempel di meja.
+     *
+     * Semua unit bisa dicetak sekaligus (lembar A4) atau satu per satu lewat
+     * tombol di baris tabel. Filter unit yang sudah dipakai supaya tidak
+     *etak label untuk unit yang belum di lokasi.
+     */
+    public function qrSheet(Request $request): View
+    {
+        $filters = $request->only(['type', 'q']);
+
+        $units = Unit::query()
+            ->when($filters['type'] ?? null, fn ($q, $type) => $q->where('type', $type))
+            ->when($filters['q'] ?? null, function ($q, $term) {
+                $term = trim((string) $term);
+
+                $q->where(fn ($inner) => $inner
+                    ->where('code', 'like', "%{$term}%")
+                    ->orWhere('name', 'like', "%{$term}%"));
+            })
+            ->orderBy('type')
+            ->orderBy('code')
+            ->get()
+            ->map(fn (Unit $unit) => [
+                'unit' => $unit,
+                'url' => TableQr::urlFor($unit->code),
+                'svg' => TableQr::svg(TableQr::urlFor($unit->code), 260),
+            ]);
+
+        return view('owner.units.qr', [
+            'cards' => $units,
+            'types' => Unit::query()->distinct()->orderBy('type')->pluck('type'),
             'filters' => $filters,
         ]);
     }

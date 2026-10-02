@@ -201,6 +201,23 @@
                                         ? 'WAKTU HABIS'
                                         : 'dari ' + unit.session.planned_minutes + ' menit'"></span>
                                 </p>
+
+                                {{-- Badge pesanan QR yang masih perlu kasir --}}
+                                <template x-if="hasUnseenOrder(unit)">
+                                    <button
+                                        type="button"
+                                        x-on:click.stop="openDetail(unit)"
+                                        x-bind:class="orderBadgeClass(unit)"
+                                        class="mt-2 flex w-full items-center gap-1.5 rounded-lg px-2 py-1 text-left text-[11px] font-bold transition hover:brightness-125"
+                                    >
+                                        <i data-lucide="bell-ring" class="h-3.5 w-3.5 shrink-0 animate-pulse"></i>
+                                        <span class="truncate" x-text="unit.order_summary.latest.headline"></span>
+                                        <span
+                                            class="ml-auto shrink-0 rounded px-1 py-px text-[10px] font-extrabold"
+                                            x-text="unit.order_summary.latest.status_label"
+                                        ></span>
+                                    </button>
+                                </template>
                             </div>
                         </template>
 
@@ -412,6 +429,86 @@
                             </div>
                         </div>
 
+                        {{-- Pesanan dari QR meja, dikelola kasir di sini --}}
+                        <div class="rounded-xl border border-brand-500/25 bg-brand-500/[0.05] p-3.5">
+                            <div class="flex items-center justify-between">
+                                <h4 class="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-300">
+                                    <x-icon name="qr-code" class="h-4 w-4" />
+                                    Pesanan QR Meja
+                                </h4>
+                                <span class="badge bg-white/5 text-slate-300"
+                                      x-text="(detail?.session?.orders?.length || 0) + ' pesanan'"></span>
+                            </div>
+
+                            <div class="mt-3 space-y-2">
+                                <template x-for="order in (detail?.session?.orders || [])" :key="order.id">
+                                    <div class="rounded-lg border border-white/5 bg-ink-900 p-3">
+                                        <div class="flex items-start justify-between gap-2">
+                                            <div class="min-w-0">
+                                                <p class="truncate text-xs font-bold text-white" x-text="order.customer_name"></p>
+                                                <p class="tabular text-[10px] text-slate-500">
+                                                    <span x-text="order.code"></span> ·
+                                                    <span x-text="order.item_count + ' item'"></span> ·
+                                                    <span x-text="order.total_label"></span>
+                                                </p>
+                                            </div>
+                                            <span
+                                                class="badge shrink-0"
+                                                x-bind:class="order.badge_class"
+                                                x-text="order.status_label"
+                                            ></span>
+                                        </div>
+
+                                        <ul class="mt-2 space-y-0.5">
+                                            <template x-for="item in order.items" :key="item.id">
+                                                <li class="flex justify-between gap-2 text-[11px] text-slate-400">
+                                                    <span class="min-w-0 truncate">
+                                                        <span class="tabular font-semibold" x-text="item.qty + '×'"></span>
+                                                        <span x-text="item.product_name"></span>
+                                                        <span x-show="item.notes" class="italic text-slate-500"
+                                                              x-text="item.notes ? '(' + item.notes + ')' : ''"></span>
+                                                    </span>
+                                                    <span class="tabular shrink-0" x-text="item.subtotal_label"></span>
+                                                </li>
+                                            </template>
+                                        </ul>
+
+                                        <p x-show="order.notes" class="mt-2 rounded bg-white/[0.04] px-2 py-1 text-[11px] italic text-slate-400"
+                                           x-text="order.notes ? 'Catatan: ' + order.notes : ''"></p>
+
+                                        {{-- Aksi kasir. "Sajikan" hanya saat masih PREPARING. --}}
+                                        <div class="mt-2.5 flex gap-2">
+                                            <button
+                                                type="button"
+                                                x-show="order.can_serve"
+                                                x-on:click="serveOrder(order)"
+                                                x-bind:disabled="submitting"
+                                                class="btn-ghost flex-1 text-xs"
+                                            >
+                                                <x-icon name="check" class="h-3.5 w-3.5" />
+                                                Sajikan
+                                            </button>
+
+                                            <button
+                                                type="button"
+                                                x-on:click="cancelOrder(order)"
+                                                x-bind:disabled="submitting"
+                                                class="btn-subtle px-3 text-xs text-rose-400/70 hover:text-rose-300"
+                                                title="Batalkan pesanan"
+                                            >
+                                                <x-icon name="x-circle" class="h-3.5 w-3.5" />
+                                            </button>
+                                        </div>
+                                    </div>
+                                </template>
+
+                                <div x-show="(detail?.session?.orders?.length || 0) === 0"
+                                     class="rounded-lg border border-dashed border-white/10 px-3 py-4 text-center text-xs text-slate-600">
+                                    Pelanggan belum memesan lewat QR.
+                                </div>
+                            </div>
+                        </div>
+
                         <form class="space-y-2.5 rounded-xl border border-white/5 bg-ink-900 p-3.5" x-on:submit.prevent="addItem()">
                             <label for="product_id" class="label">Tambah Produk</label>
 
@@ -504,8 +601,12 @@
                                     <dd class="tabular font-semibold text-slate-200" x-text="detail?.session?.rental_fee_label"></dd>
                                 </div>
                                 <div class="flex items-center justify-between">
-                                    <dt class="text-slate-400">F&B</dt>
+                                    <dt class="text-slate-400">F&B (kasir)</dt>
                                     <dd class="tabular font-semibold text-slate-200" x-text="detail?.session?.items_total_label"></dd>
+                                </div>
+                                <div class="flex items-center justify-between">
+                                    <dt class="text-slate-400">Pesanan QR meja</dt>
+                                    <dd class="tabular font-semibold text-slate-200" x-text="detail?.session?.orders_total_label"></dd>
                                 </div>
                                 <div class="flex items-center justify-between border-t border-white/10 pt-2">
                                     <dt class="font-bold text-white">Total</dt>
@@ -601,6 +702,25 @@
                         </template>
                     </div>
 
+                    {{-- Pesanan QR ikut dirinci di struk karena dibayar dalam
+                         satu transaksi dengan sewa. --}}
+                    <div x-show="(receipt?.orders?.length || 0) > 0" class="space-y-2 border-t border-dashed border-white/10 pt-3">
+                        <template x-for="order in (receipt?.orders || [])" :key="order.id">
+                            <div>
+                                <div class="flex justify-between text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                                    <span x-text="order.code"></span>
+                                    <span x-text="order.total_label"></span>
+                                </div>
+                                <template x-for="item in order.items" :key="item.id">
+                                    <div class="flex justify-between">
+                                        <span class="text-slate-400"><span x-text="item.qty"></span>× <span x-text="item.product_name"></span></span>
+                                        <span class="tabular text-slate-300" x-text="item.subtotal_label"></span>
+                                    </div>
+                                </template>
+                            </div>
+                        </template>
+                    </div>
+
                     <div class="space-y-1.5 border-t border-dashed border-white/10 pt-3">
                         <div class="flex justify-between">
                             <span class="text-slate-400">Sewa</span>
@@ -609,6 +729,10 @@
                         <div class="flex justify-between">
                             <span class="text-slate-400">F&B</span>
                             <span class="tabular text-slate-300" x-text="receipt?.items_total_label"></span>
+                        </div>
+                        <div x-show="(receipt?.orders?.length || 0) > 0" class="flex justify-between">
+                            <span class="text-slate-400">Pesanan QR meja</span>
+                            <span class="tabular text-slate-300" x-text="receipt?.orders_total_label"></span>
                         </div>
                     </div>
 

@@ -4,17 +4,21 @@ namespace App\Providers;
 
 use App\Actions\Fortify\CreateNewUser;
 use App\Actions\Fortify\ResetUserPassword;
+use App\Http\Middleware\EnsureShiftClosedBeforeLogout;
 use App\Http\Responses\CustomerRegisterResponse;
+use App\Http\Responses\LogoutToLoginResponse;
 use App\Http\Responses\RoleBasedLoginResponse;
 use App\Models\User;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Route;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Laravel\Fortify\Contracts\LoginResponse;
+use Laravel\Fortify\Contracts\LogoutResponse;
 use Laravel\Fortify\Contracts\RegisterResponse;
 use Laravel\Fortify\Fortify;
 
@@ -64,9 +68,15 @@ class FortifyServiceProvider extends ServiceProvider
         // Pengalihan setelah login berdasarkan role.
         $this->app->singleton(LoginResponse::class, fn () => new RoleBasedLoginResponse);
 
+        // Setelah logout everyone mendarat di halaman masuk, bukan di landing
+        // page pelanggan seperti fallback bawaan Fortify.
+        $this->app->singleton(LogoutResponse::class, fn () => new LogoutToLoginResponse);
+
         // Pelanggan yang baru daftar langsung masuk ke dashboard booking-nya,
         // bukan ke fallback `/dashboard` milik staff.
         $this->app->singleton(RegisterResponse::class, fn () => new CustomerRegisterResponse);
+
+        $this->guardLogoutWithOpenShift();
 
         RateLimiter::for('login', function (Request $request) {
             $throttleKey = Str::transliterate(Str::lower((string) $request->input(Fortify::username()))).'|'.$request->ip();
@@ -78,6 +88,25 @@ class FortifyServiceProvider extends ServiceProvider
         // login: satu IP masih boleh membuat beberapa akun berbeda.
         RateLimiter::for('register', function (Request $request) {
             return Limit::perHour(5)->by((string) $request->ip());
+        });
+    }
+
+    /**
+     * Tempelkan penjaga shift ke route `logout` milik Fortify.
+     *
+     * Fortify mendaftarkan route login/logout sendiri dan tidak menyediakan
+     * hook middleware, jadi route-nya yang ditambahi middleware — jauh lebih
+     * sempit dibanding meng-globalkan ke seluruh group `web`.
+     */
+    private function guardLogoutWithOpenShift(): void
+    {
+        $this->app->booted(function (): void {
+            $routes = $this->app['router']->getRoutes();
+            $logout = $routes->getByName('logout');
+
+            if ($logout instanceof Route) {
+                $logout->middleware(EnsureShiftClosedBeforeLogout::class);
+            }
         });
     }
 }

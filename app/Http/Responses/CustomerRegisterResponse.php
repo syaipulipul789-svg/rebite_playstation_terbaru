@@ -15,6 +15,11 @@ class CustomerRegisterResponse implements RegisterResponseContract
 {
     public function toResponse($request): RedirectResponse
     {
-        return redirect()->route('customer.dashboard');
+        // Saat user baru berhasil mendaftar, Fortify sudah meng-autentikasi
+        // mereka, tapi kita ingin mengarahkan dengan jelas dan menambahkan
+        // flash message supaya user tahu akun berhasil dibuat.
+        return redirect()
+            ->route('customer.dashboard')
+            ->with('success', 'Akun berhasil dibuat. Selamat datang!');
     }
 }

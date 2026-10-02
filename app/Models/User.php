@@ -105,6 +105,30 @@ class User extends Authenticatable
     }
 
     /**
+     * Halaman milik sendiri untuk user ini — satu-satunya sumber kebenaran
+     * "ke mana user diarahkan".
+     *
+     * Dipakai oleh `RoleBasedLoginResponse` (pasca-login), route `dashboard`,
+     * dan landing page `/`. Sebelumnya ketiganya punya salinan logika sendiri
+     * dan tidak selalu sama: `/dashboard` mengarahkan kasir ke grid unit
+     * tanpa mengecek shift-nya, sehingga kasir tanpa shift kena dua redirect.
+     */
+    public function landingRoute(): string
+    {
+        if ($this->isCustomer()) {
+            return 'customer.dashboard';
+        }
+
+        if ($this->isOwner()) {
+            return 'owner.dashboard';
+        }
+
+        // Kasir dengan shift OPEN langsung ke grid unit. Tanpa shift, kasir
+        // harus lewat modal awal kas lebih dulu.
+        return $this->activeShift() === null ? 'shift.start' : 'units.index';
+    }
+
+    /**
      * Autentikasi memakai username (fallback ke email) untuk kasir.
      *
      * Akun pelanggan tidak punya username artificial: kolom `username` diisi

@@ -34,6 +34,15 @@ document.addEventListener('alpine:init', () => {
         poller: null,
         alertedSessions: new Set(),
 
+        /**
+         * Order terakhir yang sudah dilihat kasir, per sesi.
+         *
+         * Disimpan di memori (bukan localStorage) supaya badge "baru" hilang
+         * begitu halaman kasir ditutup — kasir baru yang membuka grid harus
+         * melihat semua pesanan yang masih menunggu.
+         */
+        seenOrders: new Map(),
+
         /* Modal state */
         modal: null, // 'start' | 'detail' | 'receipt'
         activeUnit: null,
@@ -83,6 +92,7 @@ document.addEventListener('alpine:init', () => {
                 this.lastSync = new Date();
                 this.loading = false;
 
+                this.markSeenOrders();
                 this.syncOpenDetail();
             } catch (error) {
                 this.loading = false;
@@ -90,6 +100,32 @@ document.addEventListener('alpine:init', () => {
 
                 clearInterval(this.poller);
             }
+        },
+
+        /**
+         * Tandai pesanan yang sudah ada saat halaman pertama dibuka sebagai
+         * "sudah dilihat" supaya badge tidak berdering untuk pesanan lama.
+         */
+        markSeenOrders() {
+            this.units.forEach((unit) => this.seenOrders.set(unit.session?.id, unit.order_summary?.latest?.id ?? null));
+        },
+
+        /**
+         * Badge berdering hanya untuk pesanan yang masuk setelah kasir membuka
+         * grid dan belum pernah dibuka detailnya.
+         */
+        hasUnseenOrder(unit) {
+            const latest = unit.order_summary?.latest;
+
+            return Boolean(latest) && this.seenOrders.get(unit.session?.id) !== latest.id;
+        },
+
+        orderBadgeClass(unit) {
+            const preparing = unit.order_summary?.preparing_count > 0;
+
+            return preparing
+                ? 'bg-amber-400/90 text-amber-950'
+                : 'bg-brand-400/90 text-brand-950';
         },
 
         /**
@@ -253,6 +289,9 @@ document.addEventListener('alpine:init', () => {
 
             this.modal = 'detail';
             this.detail = unit;
+
+            // Membuka detail = kasir sudah melihat pesanan terbaru unit ini.
+            this.seenOrders.set(unit.session?.id, unit.order_summary?.latest?.id ?? null);
 
             await this.loadMeta(unit);
             await this.reloadDetail();
@@ -442,10 +481,48 @@ document.addEventListener('alpine:init', () => {
             }
         },
 
+        async serveOrder(order) {
+            this.submitting = true;
+
+            try {
+                const { data } = await window.axios.post(order.serve_url);
+
+                window.Alpine.store('toast').success(
+                    `Pesanan ${order.code} ditandai sudah diantar.`,
+                );
+
+                await this.refresh();
+                await this.reloadDetail();
+            } catch (error) {
+                this.handleError(error, 'Gagal menandai pesanan diantar.');
+            } finally {
+                this.submitting = false;
+            }
+        },
+
+        async cancelOrder(order) {
+            if (! window.confirm(`Batalkan pesanan ${order.code}?`)) return;
+
+            this.submitting = true;
+
+            try {
+                const { data } = await window.axios.post(order.cancel_url);
+
+                window.Alpine.store('toast').warning(data.message);
+
+                await this.refresh();
+                await this.reloadDetail();
+            } catch (error) {
+                this.handleError(error, 'Gagal membatalkan pesanan.');
+            } finally {
+                this.submitting = false;
+            }
+        },
+
         /**
-         * Tarik ulang tagihan lengkap (item F&B + total) dari endpoint sesi.
-         * Endpoint /api/units hanya mengirim ringkasan unit, jadi angka
-         * tagihan di modal harus selalu berasal dari sini.
+         * Tarik ulang tagihan lengkap (item F&B + pesanan QR + total) dari
+         * endpoint sesi. Endpoint /api/units hanya mengirim ringkasan unit,
+         * jadi angka tagihan di modal harus selalu berasal dari sini.
          */
         async reloadDetail() {
             if (!this.detail?.session) return;

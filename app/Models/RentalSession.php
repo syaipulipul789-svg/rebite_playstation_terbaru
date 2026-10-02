@@ -70,6 +70,68 @@ class RentalSession extends Model
         return $this->hasMany(SessionItem::class);
     }
 
+    /**
+     * Pesanan F&B yang dibuat dari QR meja selama sesi ini berjalan.
+     *
+     * Dipisah dari `items()` (pesanan yang kasir input manual dari grid)
+     * supaya billable bisa dibedakan dan dirinci terpisah di struk.
+     */
+    public function orders(): HasMany
+    {
+        return $this->hasMany(Order::class);
+    }
+
+    /**
+     * Order yang benar-benar harus ditagihkan ke pelanggan: semua order
+     * yang menempel ke sesi ini kecuali yang sudah dibatalkan.
+     */
+    public function billableOrders(): HasMany
+    {
+        return $this->orders()->billable();
+    }
+
+    /**
+     * Order QR yang masih perlu tindakan kasir (dimasak atau diantar).
+     */
+    public function outstandingOrders(): HasMany
+    {
+        return $this->orders()->outstanding();
+    }
+
+    /**
+     * Ringkasan order QR untuk badge di kartu grid.
+     *
+     * Menghitung dari relasi yang sudah di-eager-load kalau ada supaya layar
+     * kasir tidak menambah query per kartu saat polling. `latest` dipakai
+     * supaya badge menyebut pesanan terakhir yang masuk — itu yang sedang
+     * ditunggu kasir, bukan yang pertama.
+     *
+     * @return array{count: int, preparing_count: int, latest: array<string, mixed>|null}
+     */
+    public function orderSummary(): array
+    {
+        $orders = $this->relationLoaded('orders')
+            ? $this->orders
+            : $this->outstandingOrders()->latest('id')->with('items.product')->get();
+
+        $latest = $orders->sortByDesc('id')->first();
+
+        return [
+            'count' => $orders->count(),
+            'preparing_count' => $orders->filter(fn (Order $order) => $order->status->isPreparing())->count(),
+            'latest' => $latest === null ? null : [
+                'id' => $latest->id,
+                'code' => $latest->code,
+                'status' => $latest->status->value,
+                'status_label' => $latest->status->label(),
+                'badge_class' => $latest->status->badgeClass(),
+                'customer_name' => $latest->customer_name,
+                'item_count' => $latest->itemCount(),
+                'headline' => $latest->headline(),
+            ],
+        ];
+    }
+
     public function scopeRunning(Builder $query): Builder
     {
         return $query->where('status', RentalSessionStatus::RUNNING);
@@ -105,12 +167,23 @@ class RentalSession extends Model
         return (float) $this->items()->sum('subtotal');
     }
 
+    public function ordersTotal(): float
+    {
+        return (float) $this->billableOrders()->sum('total_price');
+    }
+
     /**
-     * Total tagihan = biaya sewa + seluruh pesanan F&B.
+     * Total tagihan = biaya sewa + pesanan manual + pesanan QR meja.
+     *
+     * Dipakai untuk estimasi tagihan di layar kasir *sebelum* checkout. Saat
+     * checkout, `RentalService` memakai angka ini di dalam satu transaksi dan
+     * sekaligus menandai order QR-nya sebagai `COMPLETED` — jadi jangan
+     * menjumlahkannya lagi lewat `ShiftService`, atau uang F&B terhitung dua
+     * kali di rekap shift.
      */
     public function grandTotal(): float
     {
-        return (float) $this->rental_fee + $this->itemsTotal();
+        return (float) $this->rental_fee + $this->itemsTotal() + $this->ordersTotal();
     }
 
     /**

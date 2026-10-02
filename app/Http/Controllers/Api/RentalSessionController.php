@@ -9,9 +9,13 @@ use App\Http\Requests\AddRentalTimeRequest;
 use App\Http\Requests\AddSessionItemRequest;
 use App\Http\Requests\CompleteRentalRequest;
 use App\Http\Requests\StartRentalRequest;
+use App\Models\Order as OrderModel;
+// Di-import sebagai OrderModel karena `Api\Order` sudah dipakai controller
+// POS untuk pesanan walk-in.
 use App\Models\RatePackage;
 use App\Models\RentalSession;
 use App\Models\Unit;
+use App\Services\OrderService;
 use App\Services\RentalService;
 use App\Support\Money;
 use Illuminate\Http\JsonResponse;
@@ -20,7 +24,10 @@ use RuntimeException;
 
 class RentalSessionController extends Controller
 {
-    public function __construct(private readonly RentalService $rental) {}
+    public function __construct(
+        private readonly RentalService $rental,
+        private readonly OrderService $orders,
+    ) {}
 
     /**
      * Card Hijau -> Modal Mulai Sewa.
@@ -54,7 +61,16 @@ class RentalSessionController extends Controller
     {
         abort_unless($rentalSession->status !== RentalSessionStatus::CANCELLED, 404);
 
-        $rentalSession->load(['unit', 'items.product', 'user', 'shift']);
+        // `billableOrders`, bukan `orders`: setelah checkout semua order QR
+        // sesi ini berubah jadi COMPLETED, dan struk yang baru selesai itu
+        // masih harus menampilkan pesanan yang dibayar pelanggan.
+        $rentalSession->load([
+            'unit',
+            'items.product',
+            'user',
+            'shift',
+            'orders' => fn ($q) => $q->billable()->latest('id')->with('items.product'),
+        ]);
 
         return response()->json([
             'server_time' => now()->toIso8601String(),
@@ -121,7 +137,12 @@ class RentalSessionController extends Controller
             return response()->json(['message' => $e->getMessage()], 422);
         }
 
-        $session->load(['unit', 'items.product', 'shift']);
+        $session->load([
+            'unit',
+            'items.product',
+            'shift',
+            'orders' => fn ($q) => $q->billable()->latest('id')->with('items.product'),
+        ]);
 
         return response()->json([
             'message' => "Sewa {$session->unit->name} selesai.",
@@ -151,10 +172,55 @@ class RentalSessionController extends Controller
         ]);
     }
 
+    /**
+     * Tandai pesanan QR sudah diantar (dari grid unit).
+     */
+    public function serveOrder(OrderModel $order): JsonResponse
+    {
+        try {
+            $served = $this->orders->markServed($order, request()->user());
+        } catch (RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json([
+            'message' => "Pesanan {$served->code} ditandai sudah diantar.",
+            'order' => $served->toDisplayArray(),
+        ]);
+    }
+
+    /**
+     * Batalkan pesanan QR dan kembalikan stoknya.
+     */
+    public function cancelOrder(Request $request, OrderModel $order): JsonResponse
+    {
+        $validated = $request->validate([
+            'reason' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        try {
+            $cancelled = $this->orders->cancel(
+                $order,
+                $validated['reason'] ?? null,
+                $request->user(),
+            );
+        } catch (RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json([
+            'message' => "Pesanan {$cancelled->code} dibatalkan dan stok dikembalikan.",
+            'order' => $cancelled->toDisplayArray(),
+        ]);
+    }
+
     private function transform(RentalSession $session): array
     {
-        $itemsTotal = $session->relationLoaded('items') ? $session->itemsTotal() : 0.0;
-        $grandTotal = Money::round((float) $session->rental_fee + $itemsTotal);
+        // Sesi di `show()` selalu sudah eager-load `orders`, tapi `store()`
+        // masih memakai transform ini sebelum relasinya ada — jadi total
+        // pesanan dihitung dari query, bukan dari collection yang belum dimuat.
+        $ordersTotal = $session->ordersTotal();
+        $grandTotal = Money::round($session->grandTotal());
 
         return [
             'id' => $session->id,
@@ -179,8 +245,10 @@ class RentalSessionController extends Controller
             'is_time_up' => $session->remainingSeconds() <= 0,
             'rental_fee' => (float) $session->rental_fee,
             'rental_fee_label' => Money::format($session->rental_fee),
-            'items_total' => $itemsTotal,
-            'items_total_label' => Money::format($itemsTotal),
+            'items_total' => $session->itemsTotal(),
+            'items_total_label' => Money::format($session->itemsTotal()),
+            'orders_total' => $ordersTotal,
+            'orders_total_label' => Money::format($ordersTotal),
             'grand_total' => $grandTotal,
             'grand_total_label' => Money::format($grandTotal),
             'payment_method' => $session->payment_method?->value,
@@ -195,6 +263,14 @@ class RentalSessionController extends Controller
                     'price_label' => Money::format($item->price),
                     'subtotal_label' => Money::format($item->subtotal),
                 ])
+                : [],
+            'order_summary' => $session->orderSummary(),
+            'orders' => $session->relationLoaded('orders')
+                ? $session->orders->map(fn (OrderModel $order) => [
+                    ...$order->toDisplayArray(),
+                    'serve_url' => route('api.orders.serve', $order),
+                    'cancel_url' => route('api.orders.cancel', $order),
+                ])->all()
                 : [],
             'note' => $session->note,
         ];

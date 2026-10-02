@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\User;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -15,6 +16,14 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class EnsureUserIsCustomer
 {
+    /**
+     * Satu-satunya definisi "boleh lewat" untuk area pelanggan.
+     */
+    public static function allows(?User $user): bool
+    {
+        return $user?->isCustomer() ?? false;
+    }
+
     public function handle(Request $request, Closure $next): Response
     {
         $user = $request->user();
@@ -22,10 +31,10 @@ class EnsureUserIsCustomer
         if ($user === null) {
             return $request->expectsJson()
                 ? response()->json(['message' => 'Unauthenticated.'], Response::HTTP_UNAUTHORIZED)
-                : redirect()->route('login');
+                : redirect()->guest(route('login'));
         }
 
-        if ($user->isCustomer()) {
+        if (self::allows($user)) {
             return $next($request);
         }
 

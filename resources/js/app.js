@@ -7,6 +7,7 @@ import './unit-grid';
 import './customer-display';
 import './customer-booking';
 import './customer-order';
+import './table-order';
 import './barcode-labels';
 import './reconciliation';
 import './charts';

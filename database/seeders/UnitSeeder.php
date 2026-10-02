@@ -6,49 +6,104 @@ use App\Enums\UnitStatus;
 use App\Models\Unit;
 use Illuminate\Database\Seeder;
 
+/**
+ * Unit konsol yang dipakai di outlet.
+ *
+ * Jumlah unit per tipe dibuat dari daftar `$types` di bawah, bukan ditulis satu
+ * per satu, supaya menambah atau mengurangi jumlah konsol cukup mengubah satu
+ * angka. Kode unit (`PS3-01`, `PS4-01`, `PB-01`, ...) adalah kunci unik di DB
+ * sekaligus kode yang kasir pindai, jadi formatnya tidak boleh diubah tanpa
+ * pemberitahuan ke tim kasir dulu.
+ */
 class UnitSeeder extends Seeder
 {
+    /**
+     * Kode unit dari versi seeder lama. Sengaja dibersihkan supaya migrasi ke
+     * daftar konsol baru tidak meninggalkan unit yatim.
+     *
+     * Hanya kode unit lama yang disebut eksplisit di sini — bukan "hapus semua
+     * yang tidak ada di daftar", karena unit yang ditambahkan sendiri lewat
+     * halaman Owner akan ikut terhapus kalau pakai pendekatan terakhir.
+     */
+    private const LEGACY_CODES = [
+        'PS5-01', 'PS5-02', 'PS5-03',
+        'VIP-01', 'VIP-02', 'VIP-03',
+        'OP-01', 'OP-02',
+    ];
+
     public function run(): void
     {
-        $units = [
-            // PS4 Reguler
-            ['code' => 'PS4-01', 'name' => 'PS4 Reguler 01', 'type' => 'PS4', 'hourly_rate' => 8000, 'location' => 'Lantai 1 - Row A'],
-            ['code' => 'PS4-02', 'name' => 'PS4 Reguler 02', 'type' => 'PS4', 'hourly_rate' => 8000, 'location' => 'Lantai 1 - Row A'],
-            ['code' => 'PS4-03', 'name' => 'PS4 Reguler 03', 'type' => 'PS4', 'hourly_rate' => 8000, 'location' => 'Lantai 1 - Row B'],
-            ['code' => 'PS4-04', 'name' => 'PS4 Reguler 04', 'type' => 'PS4', 'hourly_rate' => 8000, 'location' => 'Lantai 1 - Row B'],
+        foreach ($this->types() as $type) {
+            for ($number = 1; $number <= $type['count']; $number++) {
+                $suffix = str_pad((string) $number, 2, '0', STR_PAD_LEFT);
 
-            // PS5 Reguler
-            ['code' => 'PS5-01', 'name' => 'PS5 Reguler 01', 'type' => 'PS5', 'hourly_rate' => 12000, 'location' => 'Lantai 1 - Row C'],
-            ['code' => 'PS5-02', 'name' => 'PS5 Reguler 02', 'type' => 'PS5', 'hourly_rate' => 12000, 'location' => 'Lantai 1 - Row C'],
-            ['code' => 'PS5-03', 'name' => 'PS5 Reguler 03', 'type' => 'PS5', 'hourly_rate' => 12000, 'location' => 'Lantai 1 - Row D'],
-
-            // VIP
-            ['code' => 'VIP-01', 'name' => 'VIP Room 01', 'type' => 'VIP', 'hourly_rate' => 20000, 'location' => 'Lantai 2 - Kamar A'],
-            ['code' => 'VIP-02', 'name' => 'VIP Room 02', 'type' => 'VIP', 'hourly_rate' => 20000, 'location' => 'Lantai 2 - Kamar A'],
-            ['code' => 'VIP-03', 'name' => 'VIP Room 03', 'type' => 'VIP', 'hourly_rate' => 20000, 'location' => 'Lantai 2 - Kamar B'],
-
-            // Open Play (gratis)
-            ['code' => 'OP-01', 'name' => 'Open Play 01', 'type' => 'OPEN_PLAY', 'hourly_rate' => 0, 'location' => 'Lantai 1 - Area Umum'],
-            ['code' => 'OP-02', 'name' => 'Open Play 02', 'type' => 'OPEN_PLAY', 'hourly_rate' => 0, 'location' => 'Lantai 1 - Area Umum'],
-        ];
-
-        foreach ($units as $unit) {
-            Unit::query()->updateOrCreate(
-                ['code' => $unit['code']],
-                [
-                    'name' => $unit['name'],
-                    'type' => $unit['type'],
-                    'hourly_rate' => $unit['hourly_rate'],
-                    'status' => UnitStatus::READY,
-                    'location' => $unit['location'],
-                ],
-            );
+                Unit::query()->updateOrCreate(
+                    ['code' => $type['code_prefix'].'-'.$suffix],
+                    [
+                        'name' => $type['name'].' '.$suffix,
+                        'type' => $type['type'],
+                        'hourly_rate' => $type['hourly_rate'],
+                        'status' => UnitStatus::READY,
+                        'location' => $type['location'],
+                        'notes' => null,
+                    ],
+                );
+            }
         }
 
-        // Satu unit contoh servis supaya kartu Kuning (Maintenance) terlihat.
-        Unit::query()->where('code', 'PS4-04')->update([
-            'status' => UnitStatus::MAINTENANCE,
-            'notes' => 'Joystick kanan drift, sedang overhaul.',
-        ]);
+        $this->purgeLegacyUnits();
+    }
+
+    /**
+     * @return list<array{code_prefix: string, name: string, type: string, hourly_rate: int, count: int, location: string}>
+     */
+    private function types(): array
+    {
+        return [
+            [
+                'code_prefix' => 'PS3',
+                'name' => 'PS3 Unit',
+                'type' => 'PS3',
+                'hourly_rate' => 6000,
+                'count' => 26,
+                'location' => 'Lantai 1',
+            ],
+            [
+                'code_prefix' => 'PS4',
+                'name' => 'PS4 Unit',
+                'type' => 'PS4',
+                'hourly_rate' => 8000,
+                'count' => 5,
+                'location' => 'Lantai 1',
+            ],
+            [
+                'code_prefix' => 'PB',
+                'name' => 'Playbox',
+                'type' => 'PLAYBOX',
+                'hourly_rate' => 10000,
+                'count' => 11,
+                'location' => 'Lantai 2',
+            ],
+        ];
+    }
+
+    /**
+     * Buang unit konsol lama yang sudah tidak dipakai di outlet.
+     *
+     * `rental_sessions.unit_id` dan `bookings.console_id` cascade on delete, jadi
+     * riwayat sewa unit yang dihapus ikut hilang. Untuk data demo itu memang
+     * diinginkan (DemoHistorySeeder dibuat ulang setelahnya), tapi untuk data
+     * produksi/unit yang sudah pernah dipakai, hapus manual lewat halaman Owner
+     * lebih aman supaya riwayatnya tetap ada.
+     */
+    private function purgeLegacyUnits(): void
+    {
+        $deleted = Unit::query()
+            ->whereIn('code', self::LEGACY_CODES)
+            ->delete();
+
+        if ($deleted > 0) {
+            $this->command?->warn($deleted.' unit konsol lama dihapus (riwayat sewanya ikut terhapus).');
+        }
     }
 }

@@ -10,6 +10,7 @@ use App\Models\Booking;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
+use App\Models\RentalSession;
 use App\Models\Shift;
 use App\Models\Unit;
 use App\Models\User;
@@ -22,6 +23,13 @@ use RuntimeException;
 
 final class OrderService
 {
+    /**
+     * Pesan tunggal yang dipakai halaman pemesanan mandiri supaya pelanggan
+     * melihat alasan yang sama, baik saat halaman dibuka maupun saat gagal
+     * mengirim pesanan.
+     */
+    public const INACTIVE_SESSION_MESSAGE = 'Unit sedang tidak aktif. Silakan hubungi kasir untuk memulai main.';
+
     public function __construct(
         private readonly AuditLogger $audit,
         private readonly ShiftService $shifts,
@@ -73,6 +81,166 @@ final class OrderService
             ->with(['unit', 'booking', 'items.product'])
             ->latest('id')
             ->first();
+    }
+
+    /**
+     * Buat pesanan dari menu QR meja dan langsung kirim ke dapur
+     * (status `PREPARING`).
+     *
+     * Berbeda dengan alur barcode yang butuh beberapa langkah (buka -> pindai
+     * -> place), pemesanan mandiri dikirim sebagai satu transaksi: kasir
+     * tidak pernah melihat keranjang setengah jadi, dan stok produk yang
+     * baru saja habis tidak sempat "dipesan lalu gagal" di dapet stok.
+     *
+     * @param  array<int, array{product_id: int, qty: int, notes?: string|null}>  $items
+     */
+    public function placeFromMenu(
+        RentalSession $session,
+        array $items,
+        string $customerName,
+        string $customerPhone,
+        ?string $notes = null,
+    ): Order {
+        return DB::transaction(function () use ($session, $items, $customerName, $customerPhone, $notes) {
+            $lockedSession = RentalSession::query()->lockForUpdate()->findOrFail($session->id);
+
+            if (! $lockedSession->isRunning()) {
+                throw ValidationException::withMessages([
+                    'unit' => self::INACTIVE_SESSION_MESSAGE,
+                ]);
+            }
+
+            if ($items === []) {
+                throw ValidationException::withMessages([
+                    'items' => 'Keranjang masih kosong.',
+                ]);
+            }
+            $order = Order::create([
+                'code' => $this->generateCode(),
+                'token' => (string) Str::uuid(),
+                'unit_id' => $lockedSession->unit_id,
+                'rental_session_id' => $lockedSession->id,
+                'shift_id' => $lockedSession->shift_id,
+                'customer_name' => $customerName,
+                'customer_phone' => $customerPhone,
+                'status' => OrderStatus::PREPARING,
+                'notes' => $notes,
+                'placed_at' => now(),
+            ]);
+
+            foreach ($items as $line) {
+                $this->addMenuLine($order, $line);
+            }
+
+            $total = $this->recalculateTotal($order);
+
+            $this->audit->record(
+                event: AuditLog::EVENT_ORDER_PLACED,
+                description: sprintf(
+                    'Pesanan %s dari QR meja %s (%d item, total %s)',
+                    $order->code,
+                    $lockedSession->unit->code,
+                    $order->itemCount(),
+                    Money::format($total),
+                ),
+                context: [
+                    'order_code' => $order->code,
+                    'unit' => $lockedSession->unit->code,
+                    'rental_session_id' => $lockedSession->id,
+                    'source' => 'table_qr',
+                ],
+            );
+
+            return $order->fresh(['unit', 'items.product']);
+        });
+    }
+
+    /**
+     * Tandai pesanan sudah diantar ke meja (status `SERVED`).
+     *
+     * Dipakai kasir setelah barang diantar. Pembayaran tetap terjadi di
+     * checkout rental, jadi status ini hanya penanda untuk pelanggan.
+     */
+    public function markServed(Order $order, ?User $actor = null): Order
+    {
+        return DB::transaction(function () use ($order, $actor) {
+            $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
+
+            if (! $locked->status->isPreparing()) {
+                throw new RuntimeException('Hanya pesanan yang sedang dimasak yang bisa ditandai sudah diantar.');
+            }
+
+            $locked->forceFill(['status' => OrderStatus::SERVED])->save();
+
+            $this->audit->record(
+                user: $actor,
+                shift: $locked->shift,
+                event: AuditLog::EVENT_ORDER_SETTLED,
+                description: sprintf('Pesanan %s sudah diantar ke %s', $locked->code, $locked->unit?->code ?? '-'),
+                context: ['order_code' => $locked->code, 'status' => OrderStatus::SERVED->value],
+            );
+
+            return $locked->fresh(['unit', 'items.product']);
+        });
+    }
+
+    /**
+     * Tandai seluruh pesanan QR meja milik sesi ini sebagai lunas, mengikuti
+     * metode pembayaran yang dipakai untuk rental.
+     *
+     * Dipanggil dari dalam transaksi `RentalService::complete()`, bukan dari
+     * controller, supaya "rental + F&B dibayar dalam satu struk" benar-benar
+     * atomik: kalau gagal di tengah, tidak ada pesanan yang tercatat sudah
+     * dibayar padahal struk rental-nya belum jadi.
+     *
+     * @return float total F&B yang ikut ditagihkan di struk rental
+     */
+    public function settleSessionOrders(RentalSession $session, User $cashier, PaymentMethod $paymentMethod): float
+    {
+        $total = 0.0;
+
+        $orders = Order::query()
+            ->forRentalSession($session)
+            ->billable()
+            ->where('status', '!=', OrderStatus::COMPLETED)
+            ->lockForUpdate()
+            ->get();
+
+        foreach ($orders as $order) {
+            $order->forceFill([
+                'status' => OrderStatus::COMPLETED,
+                'shift_id' => $session->shift_id ?? $order->shift_id,
+                'user_id' => $cashier->id,
+                'payment_method' => $paymentMethod,
+                'settled_at' => now(),
+            ])->save();
+
+            $total += $order->totalPrice();
+        }
+
+        if ($orders->isNotEmpty()) {
+            $this->audit->record(
+                user: $cashier,
+                shift: $session->shift,
+                event: AuditLog::EVENT_ORDER_SETTLED,
+                description: sprintf(
+                    '%d pesanan QR meja dilunasi bersama rental %s (%s), total %s',
+                    $orders->count(),
+                    $session->unit?->code ?? '-',
+                    $paymentMethod->label(),
+                    Money::format($total),
+                ),
+                context: [
+                    'unit' => $session->unit?->code,
+                    'rental_session_id' => $session->id,
+                    'order_codes' => $orders->pluck('code')->all(),
+                    'total' => Money::round($total),
+                    'payment_method' => $paymentMethod->value,
+                ],
+            );
+        }
+
+        return Money::round($total);
     }
 
     /**
@@ -249,6 +417,12 @@ final class OrderService
         return DB::transaction(function () use ($order, $cashier, $paymentMethod, $note) {
             $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
 
+            if ($locked->rental_session_id !== null) {
+                throw new RuntimeException(
+                    'Pesanan QR meja dibayar otomatis saat rental di-checkout, bukan satu per satu di halaman ini.',
+                );
+            }
+
             if ($locked->status !== OrderStatus::PLACED) {
                 throw new RuntimeException('Pesanan ini sudah diproses atau belum dikirim pelanggan.');
             }
@@ -307,7 +481,7 @@ final class OrderService
         return DB::transaction(function () use ($order, $reason, $actor) {
             $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
 
-            if (! in_array($locked->status, [OrderStatus::PENDING, OrderStatus::PLACED], true)) {
+            if (! $locked->status->isOutstanding()) {
                 throw new RuntimeException('Pesanan ini sudah diproses sebelumnya.');
             }
 
@@ -341,6 +515,67 @@ final class OrderService
 
             return $locked->fresh(['unit', 'booking', 'items.product']);
         });
+    }
+
+    /**
+     * Tambah satu baris item pesanan menu (dipakai oleh alur QR meja).
+     *
+     * Baris dengan produk yang sama digabung selama catatannya sama, tapi
+     * tetap dipisah kalau catatan berbeda: "Nasi Goreng 2,pedas" dan
+     * "Nasi Goreng 1,tidak pedas" adalah dua permintaan berbeda dan kasir
+     * harus bisa membacanya terpisah.
+     *
+     * @param  array{product_id: int, qty: int, notes?: string|null}  $line
+     */
+    private function addMenuLine(Order $order, array $line): OrderItem
+    {
+        $qty = max(1, (int) ($line['qty'] ?? 1));
+        $notes = filled($line['notes'] ?? null) ? trim((string) $line['notes']) : null;
+
+        $product = Product::query()->lockForUpdate()->findOrFail($line['product_id']);
+
+        if (! $product->is_active) {
+            throw ValidationException::withMessages([
+                'items' => "Produk {$product->name} sudah nonaktif.",
+            ]);
+        }
+
+        $item = $order->items()
+            ->where('product_id', $product->id)
+            ->where(function ($query) use ($notes) {
+                $notes === null
+                    ? $query->whereNull('notes')
+                    : $query->where('notes', $notes);
+            })
+            ->lockForUpdate()
+            ->first();
+
+        $targetQty = ($item?->qty ?? 0) + $qty;
+
+        if ($product->stock < $qty) {
+            throw ValidationException::withMessages([
+                'items' => "Stok {$product->name} tidak cukup (tersedia {$product->stock}).",
+            ]);
+        }
+
+        $subtotal = Money::round((float) $product->price * $targetQty);
+
+        if ($item === null) {
+            $item = OrderItem::create([
+                'order_id' => $order->id,
+                'product_id' => $product->id,
+                'qty' => $targetQty,
+                'price' => $product->price,
+                'subtotal' => $subtotal,
+                'notes' => $notes,
+            ]);
+        } else {
+            $item->forceFill(['qty' => $targetQty, 'subtotal' => $subtotal])->save();
+        }
+
+        $product->decrement('stock', $qty);
+
+        return $item;
     }
 
     /**

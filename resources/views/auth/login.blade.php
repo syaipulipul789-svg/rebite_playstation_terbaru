@@ -61,28 +61,10 @@
         </button>
     </form>
 
-    <div class="mt-6 rounded-xl border border-white/5 bg-ink-900/60 p-4">
-        <p class="mb-2.5 flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-slate-600">
-            <x-icon name="key-round" class="h-3.5 w-3.5" />
-            Akun Demo
-        </p>
-
-        <div class="space-y-1.5 text-xs">
-            <div class="flex items-center justify-between gap-2">
-                <span class="text-slate-500">Owner</span>
-                <code class="rounded bg-white/5 px-2 py-0.5 font-mono text-slate-300">owner / password</code>
-            </div>
-            <div class="flex items-center justify-between gap-2">
-                <span class="text-slate-500">Kasir</span>
-                <code class="rounded bg-white/5 px-2 py-0.5 font-mono text-slate-300">kasir01 / password</code>
-            </div>
-        </div>
-
-        <p class="mt-3 text-center text-xs text-slate-500">
-            Pelanggan belum punya akun?
-            <a href="{{ route('register') }}" class="font-semibold text-brand-400 hover:text-brand-300">
-                Daftar gratis
-            </a>
-        </p>
-    </div>
+    <p class="mt-6 text-center text-sm text-slate-500">
+        Pelanggan belum punya akun?
+        <a href="{{ route('register') }}" class="font-semibold text-brand-400 hover:text-brand-300">
+            Daftar gratis
+        </a>
+    </p>
 @endsection

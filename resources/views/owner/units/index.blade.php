@@ -29,10 +29,17 @@
                 @endforeach
             </div>
 
-            <a href="{{ route('owner.units.create') }}" class="btn-primary">
-                <x-icon name="plus" class="h-4 w-4" />
-                Tambah Unit
-            </a>
+            <div class="flex items-center gap-2">
+                <a href="{{ route('owner.units.qr') }}" class="btn-subtle">
+                    <x-icon name="qr-code" class="h-4 w-4" />
+                    QR Meja
+                </a>
+
+                <a href="{{ route('owner.units.create') }}" class="btn-primary">
+                    <x-icon name="plus" class="h-4 w-4" />
+                    Tambah Unit
+                </a>
+            </div>
         </div>
 
         <form method="GET" action="{{ route('owner.units.index') }}" class="card flex flex-wrap items-end gap-3 p-4">

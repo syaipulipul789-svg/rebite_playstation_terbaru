@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\OrderStatus;
 use App\Enums\PaymentMethod;
 use App\Enums\RentalSessionStatus;
 use App\Enums\ShiftStatus;
@@ -26,6 +27,7 @@ final class RentalService
         private readonly PricingService $pricing,
         private readonly AuditLogger $audit,
         private readonly ShiftService $shifts,
+        private readonly OrderService $orders,
     ) {}
 
     /**
@@ -203,6 +205,12 @@ final class RentalService
     /**
      * Selesaikan sewa: hitung durasi aktual, tetapkan metode pembayaran,
      * kunci shift rekap, dan bebaskan unit kembali ke READY.
+     *
+     * Pesanan dari QR meja ikut dilunasi di sini, memakai metode pembayaran
+     * yang sama, sehingga pelanggan cukup satu kali bayar dan kasir cukup satu
+     * struk. Penting: penandaan order sebagai `COMPLETED` harus terjadi
+     * *sebelum* `recalculateRevenue()`, karena angka session di rekap sudah
+     * menghitung order tersebut lewat subquery.
      */
     public function complete(RentalSession $session, PaymentMethod $paymentMethod, ?string $note = null): RentalSession
     {
@@ -232,12 +240,18 @@ final class RentalService
 
             $unit->forceFill(['status' => UnitStatus::READY])->save();
 
+            // Pesanan QR meja ikut lunas dalam struk yang sama. Pesanan yang
+            // sudah dibatal tidak ikut dihitung karena query-nya pakai scope
+            // `billable()`.
+            $ordersTotal = $this->orders->settleSessionOrders($locked, $locked->user, $paymentMethod);
+
             // Rekap shift harus ikut mutakhir sekarang, bukan hanya saat
             // halaman rekonsiliasi dibuka / shift ditutup, supaya angka di
             // POS dan dashboard tidak basi selama shift masih berjalan.
             $this->shifts->recalculateRevenue($locked->shift);
 
-            $grandTotal = $locked->grandTotal();
+            $itemsTotal = $locked->itemsTotal();
+            $grandTotal = Money::round((float) $locked->rental_fee + $itemsTotal + $ordersTotal);
 
             $this->audit->record(
                 user: $locked->user,
@@ -253,18 +267,23 @@ final class RentalService
                 context: [
                     'unit' => $unit->code,
                     'rental_fee' => (float) $locked->rental_fee,
-                    'items_total' => $locked->itemsTotal(),
+                    'items_total' => $itemsTotal,
+                    'orders_total' => $ordersTotal,
                     'grand_total' => $grandTotal,
                     'payment_method' => $paymentMethod->value,
                 ],
             );
 
-            return $locked->fresh(['unit', 'items.product', 'shift']);
+            return $locked->fresh(['unit', 'items.product', 'orders.items.product', 'shift']);
         });
     }
 
     /**
      * Batalkan sesi: unit kembali READY, tidak ada pendapatan tercatat.
+     *
+     * Pesanan QR meja ikut dibatalkan: bayarannya memang terikat pada rental
+     * yang dibatalkan, jadi tidak boleh menggantung sebagai "sudah dikirim"
+     * untuk unit yang sudah free play / disewa orang lain.
      */
     public function cancel(RentalSession $session, ?string $reason = null): RentalSession
     {
@@ -279,6 +298,13 @@ final class RentalService
             foreach ($locked->items as $item) {
                 $item->product?->increment('stock', $item->qty);
                 $item->delete();
+            }
+
+            $cancelledOrders = 0;
+
+            foreach ($locked->orders()->where('status', '!=', OrderStatus::CANCELLED)->lockForUpdate()->get() as $order) {
+                $this->orders->cancel($order, 'Sewa dibatalkan kasir');
+                $cancelledOrders++;
             }
 
             $locked->forceFill([

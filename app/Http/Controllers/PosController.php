@@ -161,7 +161,9 @@ class PosController extends Controller
         $filter = $request->string('status')->toString() ?: 'awaiting';
 
         $query = Order::query()
-            ->with(['unit', 'items.product', 'booking', 'user'])
+            // `rentalSession` dibutuhkan supaya kasir tahu order QR meja
+            // dibayar lewat checkout sewa, bukan tombol terima bayar di sini.
+            ->with(['unit', 'items.product', 'booking', 'user', 'rentalSession.unit'])
             ->orderByDesc('created_at');
 
         match ($filter) {
@@ -195,6 +197,23 @@ class PosController extends Controller
         return back()->with('success', "Pesanan {$settled->code} dibayar — masuk rekap shift.");
     }
 
+    /**
+     * Tandai pesanan QR meja sudah diantar ke pelanggan.
+     *
+     * Hanya perubahan status informatif: pembayaran tetap terjadi satu kali
+     * saat rental di-checkout, jadi kasir tidak perlu membayar per pesanan.
+     */
+    public function serveOrder(Order $order): RedirectResponse
+    {
+        try {
+            $served = $this->orders->markServed($order, $this->currentUser());
+        } catch (RuntimeException $e) {
+            return back()->with('error', $e->getMessage());
+        }
+
+        return back()->with('success', "Pesanan {$served->code} ditandai sudah diantar.");
+    }
+
     public function cancelOrder(Request $request, Order $order): RedirectResponse
     {
         $validated = $request->validate([
@@ -214,6 +233,8 @@ class PosController extends Controller
     {
         $record = RentalSession::query()
             ->with(['unit', 'items.product', 'user', 'shift'])
+            // Pesanan QR ikut dirinci karena dibayar satu transaksi dengan sewa.
+            ->with(['billableOrders.items.product'])
             ->findOrFail($session);
 
         return view('pos.receipt', [

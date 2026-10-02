@@ -4,8 +4,10 @@ namespace App\Http\Controllers\Api;
 
 use App\Enums\UnitStatus;
 use App\Http\Controllers\Controller;
+use App\Models\Order;
 use App\Models\Product;
 use App\Models\RatePackage;
+use App\Models\RentalSession;
 use App\Models\Unit;
 use App\Support\Money;
 use Illuminate\Http\JsonResponse;
@@ -20,11 +22,21 @@ class UnitController extends Controller
      * - server_time  : acuan waktu server untuk menghilangkan drift jam client
      * - remaining_seconds : sisa waktu sesi dihitung ulang di server
      * - is_time_up   : memicu card kuning + alert di client
+     *
+     * `order_summary` sengaja dibatasi ke pesanan yang belum final: hanya
+     * order milik sesi yang sedang berjalan yang muncul, jadi volumenya kecil
+     * walau grid penuh. Rincian lengkap tetap diambil di `show()`.
      */
     public function index(Request $request): JsonResponse
     {
         $units = Unit::query()
-            ->with(['runningSession' => fn ($q) => $q->with('user')])
+            ->with([
+                'runningSession' => fn ($q) => $q->with('user'),
+                'runningSession.orders' => fn ($q) => $q
+                    ->outstanding()
+                    ->latest('id')
+                    ->with('items.product'),
+            ])
             ->orderBy('type')
             ->orderBy('code')
             ->get();
@@ -38,7 +50,13 @@ class UnitController extends Controller
 
     public function show(Unit $unit): JsonResponse
     {
-        $unit->load(['runningSession' => fn ($q) => $q->with(['items.product', 'user'])]);
+        $unit->load([
+            'runningSession' => fn ($q) => $q->with(['items.product', 'user']),
+            'runningSession.orders' => fn ($q) => $q
+                ->outstanding()
+                ->latest('id')
+                ->with('items.product'),
+        ]);
 
         return response()->json([
             'server_time' => now()->toIso8601String(),
@@ -111,6 +129,7 @@ class UnitController extends Controller
             'indicator' => $indicator,
             'can_start' => $unit->status === UnitStatus::READY,
             'session' => null,
+            'order_summary' => null,
         ];
 
         if ($session !== null) {
@@ -134,6 +153,8 @@ class UnitController extends Controller
                 'cashier' => $session->user?->name,
             ];
 
+            $data['order_summary'] = $session->orderSummary();
+
             if ($detailed) {
                 $data['session']['items'] = $session->items->map(fn ($item) => [
                     'id' => $item->id,
@@ -146,15 +167,34 @@ class UnitController extends Controller
                     'subtotal_label' => Money::format($item->subtotal),
                 ]);
 
-                $itemsTotal = $session->itemsTotal();
-
-                $data['session']['items_total'] = $itemsTotal;
-                $data['session']['items_total_label'] = Money::format($itemsTotal);
-                $data['session']['grand_total'] = Money::round((float) $session->rental_fee + $itemsTotal);
-                $data['session']['grand_total_label'] = Money::format((float) $session->rental_fee + $itemsTotal);
+                $this->attachTotals($data['session'], $session);
             }
         }
 
         return $data;
+    }
+
+    /**
+     * Rincian tagihan sesi: sewa + item manual + pesanan QR meja.
+     *
+     * Angka diambil dari model supaya estimasi di grid, modal detail, dan
+     * receipt checkout tidak pernah berbeda. Hitungannya sudah termasuk
+     * pesanan QR karena `RentalService` menetapkannya sebagai satu tagihan
+     * dengan sewa.
+     *
+     * @param  array<string, mixed>  $target
+     */
+    private function attachTotals(array &$target, RentalSession $session): void
+    {
+        $itemsTotal = $session->itemsTotal();
+        $ordersTotal = $session->ordersTotal();
+        $grandTotal = Money::round($session->grandTotal());
+
+        $target['items_total'] = $itemsTotal;
+        $target['items_total_label'] = Money::format($itemsTotal);
+        $target['orders_total'] = $ordersTotal;
+        $target['orders_total_label'] = Money::format($ordersTotal);
+        $target['grand_total'] = $grandTotal;
+        $target['grand_total_label'] = Money::format($grandTotal);
     }
 }

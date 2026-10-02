@@ -68,8 +68,19 @@ final class ShiftService
 
     /**
      * Hitung ulang rekap pendapatan sistem dari sesi rental yang sudah
-     * COMPLETED plus pesanan barcode yang sudah dibayar, di dalam shift
-     * tersebut, dikelompokkan per metode pembayaran.
+     * COMPLETED plus pesanan yang sudah dibayar, di dalam shift tersebut,
+     * dikelompokkan per metode pembayaran.
+     *
+     * Aturan pemisahan agar tidak ada uang yang terhitung dua kali:
+     * - Pendapatan sesi = biaya sewa + item manual + pesanan QR meja yang
+     *   menempel ke sesi itu (sudah ikut dilunasi saat checkout).
+     * - Pendapatan order mandiri = hanya pesanan yang TIDAK punya
+     *   `rental_session_id`, yaitu hasil scan barcode yang dibayar terpisah.
+     *
+     * Kalau baris kedua tidak dibatasi, setiap pesanan QR meja akan masuk
+     * rekap sekali lewat sesi dan sekali lagi lewat order — dan karena
+     * keduanya memakai payment method yang sama, angka kas yang diharapkan
+     * saat rekonsiliasi jadi lebih besar dari uang sungguhan di laci.
      *
      * Dipanggil setiap kali ada sesi atau pesanan yang diselesaikan agar
      * angka pada halaman rekonsiliasi selalu sinkron dengan database.
@@ -79,12 +90,20 @@ final class ShiftService
         $sessionTotals = $shift->rentalSessions()
             ->where('status', RentalSessionStatus::COMPLETED)
             ->whereNotNull('payment_method')
-            ->selectRaw('payment_method, SUM(rental_fee + COALESCE((SELECT SUM(subtotal) FROM session_items WHERE session_items.rental_session_id = rental_sessions.id), 0)) as total')
+            ->selectRaw(
+                'payment_method, SUM(rental_fee'
+                .' + COALESCE((SELECT SUM(subtotal) FROM session_items'
+                .'   WHERE session_items.rental_session_id = rental_sessions.id), 0)'
+                .' + COALESCE((SELECT SUM(total_price) FROM orders'
+                .'   WHERE orders.rental_session_id = rental_sessions.id'
+                .'   AND orders.status <> \'CANCELLED\'), 0)) as total'
+            )
             ->groupBy('payment_method')
             ->pluck('total', 'payment_method');
 
         $orderTotals = $shift->orders()
             ->where('status', OrderStatus::COMPLETED)
+            ->whereNull('rental_session_id')
             ->whereNotNull('payment_method')
             ->selectRaw('payment_method, SUM(total_price) as total')
             ->groupBy('payment_method')
@@ -133,6 +152,10 @@ final class ShiftService
             'session_count' => $shift->rentalSessions()
                 ->where('status', RentalSessionStatus::COMPLETED)
                 ->count(),
+            // Penghitung aktivitas, bukan baris pendapatan: pesanan QR meja
+            // ikut dihitung di sini meski uangnya sudah masuk lewat
+            // `sessionTotals`. Kalau dibatasi hanya pesanan mandiri, jumlah
+            // pesanan yang terlihat kasir jadi terlalu kecil.
             'order_count' => $shift->orders()
                 ->where('status', OrderStatus::COMPLETED)
                 ->count(),

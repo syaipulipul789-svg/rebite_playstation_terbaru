@@ -183,6 +183,30 @@
             @endforelse
         </div>
 
+        @if ($session->billableOrders->isNotEmpty())
+            <div class="section">
+                <p class="section-title">Pesanan QR Meja</p>
+
+                @foreach ($session->billableOrders as $order)
+                    <p class="item qty" style="margin-bottom:4px">
+                        {{ $order->code }} · {{ $order->customer_name }}
+                    </p>
+
+                    @foreach ($order->items as $item)
+                        <div class="item">
+                            <span>
+                                {{ $item->qty }}× {{ $item->product?->name }}
+                                @if ($item->notes)
+                                    <span class="qty">({{ $item->notes }})</span>
+                                @endif
+                            </span>
+                            <span class="amount">{{ \App\Support\Money::format($item->subtotal, false) }}</span>
+                        </div>
+                    @endforeach
+                @endforeach
+            </div>
+        @endif
+
         <div class="section">
             <div class="item">
                 <span>Biaya sewa</span>
@@ -193,6 +217,13 @@
                 <span>Subtotal F&amp;B</span>
                 <span class="amount">{{ \App\Support\Money::format($session->itemsTotal(), false) }}</span>
             </div>
+
+            @if ($session->ordersTotal() > 0)
+                <div class="item" style="margin-top:5px">
+                    <span>Subtotal QR meja</span>
+                    <span class="amount">{{ \App\Support\Money::format($session->ordersTotal(), false) }}</span>
+                </div>
+            @endif
         </div>
 
         <div class="total">

@@ -222,8 +222,7 @@ class CustomerDisplayController extends Controller
      */
     private function groupProducts($products): Collection
     {
-        return collect(ProductCategory::cases())
-            ->reject(fn (ProductCategory $category) => $category === ProductCategory::EXTRA)
+        return collect(ProductCategory::menuGroups())
             ->map(function (ProductCategory $category) use ($products) {
                 return [
                     'category' => $category,

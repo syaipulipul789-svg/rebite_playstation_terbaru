@@ -15,8 +15,17 @@ class UnitGridController extends Controller
      */
     public function index(Request $request): View
     {
+        // Pesanan QR ikut di-eager-load supaya render pertama (sebelum polling
+        // pertama selesai) sudah punya badge yang benar. Kalau tidak, kartu
+        // akan sempat tampil tanpa badge lalu melompat saat data pertama masuk.
         $units = Unit::query()
-            ->with(['runningSession' => fn ($q) => $q->with('user')])
+            ->with([
+                'runningSession' => fn ($q) => $q->with('user'),
+                'runningSession.orders' => fn ($q) => $q
+                    ->outstanding()
+                    ->latest('id')
+                    ->with('items.product'),
+            ])
             ->orderBy('type')
             ->orderBy('code')
             ->get();

@@ -13,6 +13,7 @@ use App\Http\Controllers\Owner\UnitMasterController;
 use App\Http\Controllers\Owner\UserController;
 use App\Http\Controllers\PosController;
 use App\Http\Controllers\ShiftController;
+use App\Http\Controllers\TableOrderController;
 use App\Http\Controllers\UnitGridController;
 use Illuminate\Support\Facades\Route;
 
@@ -60,7 +61,7 @@ Route::middleware(['auth', 'role.customer'])->prefix('customer')->name('customer
 | Pemesanan menu via barcode — PUBLIK (tanpa auth)
 |--------------------------------------------------------------------------
 | Pelanggan memindai barcode produk dengan kamera HP di halaman `/order`.
-| Pesanan identified lewat `orders.token` yang disimpan di session browser;
+| Pesanan diidentifikasi lewat `orders.token` yang disimpan di session browser;
 | endpoint di bawah menolak token yang bukan milik session tersebut.
 */
 Route::prefix('order')->name('customer.order.')->group(function () {
@@ -76,7 +77,29 @@ Route::prefix('order')->name('customer.order.')->group(function () {
 
 /*
 |--------------------------------------------------------------------------
-| Authenticated — KASIR (dan's Owner untuk halaman grid)
+| Pemesanan mandiri via QR meja — PUBLIK (tanpa auth)
+|--------------------------------------------------------------------------
+| Pelanggan memindai QR yang ditempel di meja (`/m/KODE-UNIT`) untuk membuka
+| menu unit yang sedang bermain. Menu hanya aktif kalau unit punya sesi
+| berjalan; pelacakan pesanan memakai token acak di URL.
+*/
+Route::prefix('m')->name('table.order.')->group(function () {
+    Route::get('/{unit_code}', [TableOrderController::class, 'show'])->name('show');
+
+    Route::post('/{unit_code}', [TableOrderController::class, 'store'])
+        ->middleware('throttle:20,1')
+        ->name('store');
+
+    Route::get('/{unit_code}/{token}', [TableOrderController::class, 'tracking'])->name('tracking');
+
+    Route::get('/{unit_code}/{token}/status', [TableOrderController::class, 'status'])
+        ->middleware('throttle:60,1')
+        ->name('status');
+});
+
+/*
+|--------------------------------------------------------------------------
+| Authenticated — KASIR (dan Owner untuk halaman grid)
 | Middleware `shift.active` mengunci Grid Unit / POS / Rekonsiliasi sampai
 | kasir menginput Modal Awal Kas.
 |--------------------------------------------------------------------------
@@ -104,6 +127,7 @@ Route::middleware(['auth'])->group(function () {
         // Pesanan menu hasil scan barcode pelanggan
         Route::get('/pos/orders', [PosController::class, 'orders'])->name('pos.orders');
         Route::post('/pos/orders/{order}/settle', [PosController::class, 'settleOrder'])->name('pos.orders.settle');
+        Route::post('/pos/orders/{order}/serve', [PosController::class, 'serveOrder'])->name('pos.orders.serve');
         Route::post('/pos/orders/{order}/cancel', [PosController::class, 'cancelOrder'])->name('pos.orders.cancel');
 
         // Rekonsiliasi akhir shift
@@ -143,6 +167,10 @@ Route::middleware(['auth', 'shift.active'])->prefix('api')->name('api.')->group(
     Route::post('/sessions/{rentalSession}/items', [RentalSessionController::class, 'storeItem'])->name('sessions.items.store');
     Route::post('/sessions/{rentalSession}/complete', [RentalSessionController::class, 'complete'])->name('sessions.complete');
     Route::post('/sessions/{rentalSession}/cancel', [RentalSessionController::class, 'cancel'])->name('sessions.cancel');
+
+    // Aksi dapur untuk pesanan QR meja dari drawer grid unit.
+    Route::post('/orders/{order}/serve', [RentalSessionController::class, 'serveOrder'])->name('orders.serve');
+    Route::post('/orders/{order}/cancel', [RentalSessionController::class, 'cancelOrder'])->name('orders.cancel');
 });
 
 /*
@@ -158,6 +186,9 @@ Route::middleware(['auth', 'role.owner'])->prefix('owner')->name('owner.')->grou
     Route::get('/audit-log', [ReportController::class, 'auditLog'])->name('audit-log');
 
     // Master Unit
+    // `units/qr` WAJIB didaftarkan sebelum resource route, kalau tidak akan
+    // tertangkap wildcard `units/{unit}` dan mencari unit berkode "qr".
+    Route::get('units/qr', [UnitMasterController::class, 'qrSheet'])->name('units.qr');
     Route::resource('units', UnitMasterController::class)->except('show');
     Route::patch('units/{unit}/status', [UnitMasterController::class, 'toggleStatus'])->name('units.status');
 
