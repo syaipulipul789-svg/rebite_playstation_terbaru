@@ -13,7 +13,7 @@
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body class="min-h-screen bg-ink-950">
-    <div x-data="{ sidebar: false }" x-on:keydown.escape.window="sidebar = false" class="flex min-h-screen">
+    <div x-data="cashierLayout({ initial: {{ $pendingNavBookingsCount }}, url: @js(auth()->user()?->isCashier() ? route('pos.bookings.pending-count') : null) })" x-on:keydown.escape.window="sidebar = false" class="flex min-h-screen">
 
         {{-- ================= SIDEBAR (DESKTOP) ================= --}}
         <aside class="fixed inset-y-0 left-0 z-30 hidden w-64 shrink-0 flex-col border-r border-white/5 bg-ink-900 lg:flex">

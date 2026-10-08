@@ -1,10 +1,13 @@
 <?php
 
+use App\Http\Controllers\AccountSettingsController;
 use App\Http\Controllers\Api\RentalSessionController;
 use App\Http\Controllers\Api\UnitController as ApiUnitController;
 use App\Http\Controllers\CustomerBookingController;
 use App\Http\Controllers\CustomerDisplayController;
 use App\Http\Controllers\CustomerOrderController;
+use App\Http\Controllers\CustomerRentalRequestController;
+use App\Http\Controllers\GoogleAuthenticationController;
 use App\Http\Controllers\Owner\OwnerDashboardController;
 use App\Http\Controllers\Owner\ProductMasterController;
 use App\Http\Controllers\Owner\RatePackageController;
@@ -12,6 +15,7 @@ use App\Http\Controllers\Owner\ReportController;
 use App\Http\Controllers\Owner\UnitMasterController;
 use App\Http\Controllers\Owner\UserController;
 use App\Http\Controllers\PosController;
+use App\Http\Controllers\PosRentalRequestController;
 use App\Http\Controllers\ShiftController;
 use App\Http\Controllers\TableOrderController;
 use App\Http\Controllers\UnitGridController;
@@ -38,6 +42,31 @@ Route::post('/cek-status', [CustomerDisplayController::class, 'searchStatus'])
 
 /*
 |--------------------------------------------------------------------------
+| Google Authentication (login, daftar, dan menghubungkan Google ke akun)
+|--------------------------------------------------------------------------
+| Login & pendaftaran baru bersifat publik. Menghubungkan Google ke akun yang
+| sudah login butuh auth + password saat ini sebagai konfirmasi.
+*/
+Route::get('/auth/google/redirect', [GoogleAuthenticationController::class, 'redirect'])->name('google.redirect');
+Route::get('/auth/google/callback', [GoogleAuthenticationController::class, 'callback'])->name('google.callback');
+Route::get('/auth/google/register', [GoogleAuthenticationController::class, 'registerForm'])->name('google.register');
+Route::post('/auth/google/register', [GoogleAuthenticationController::class, 'register'])->name('google.register.store');
+Route::post('/auth/google/link', [GoogleAuthenticationController::class, 'link'])
+    ->middleware('auth')
+    ->name('google.link');
+
+/*
+|--------------------------------------------------------------------------
+| Pengaturan akun — semua role yang sudah login
+|--------------------------------------------------------------------------
+| Pergantian password sendiri memakai route Fortify `user-password.update`.
+*/
+Route::get('/settings', [AccountSettingsController::class, 'index'])
+    ->middleware('auth')
+    ->name('account.settings');
+
+/*
+|--------------------------------------------------------------------------
 | PELANGGAN — wajib login (akun CustomerArea, daftar lewat nomor WhatsApp)
 |--------------------------------------------------------------------------
 | Nama dan nomor WhatsApp diambil dari akun, jadi kasir selalu punya kontak
@@ -54,6 +83,10 @@ Route::middleware(['auth', 'role.customer'])->prefix('customer')->name('customer
     Route::get('/bookings/status', [CustomerBookingController::class, 'status'])
         ->middleware('throttle:60,1')
         ->name('bookings.status');
+
+    // Permintaan sewa unit sesuai jadwal yang diinginkan pelanggan.
+    Route::get('/rentals', [CustomerRentalRequestController::class, 'index'])->name('rentals.index');
+    Route::post('/rentals', [CustomerRentalRequestController::class, 'store'])->name('rentals.store');
 });
 
 /*
@@ -120,9 +153,16 @@ Route::middleware(['auth'])->group(function () {
 
         // Daftar Booking reservasi online
         Route::get('/pos/bookings', [PosController::class, 'bookings'])->name('pos.bookings');
+        Route::get('/pos/bookings/pending-count', [PosController::class, 'pendingBookingsCount'])->name('pos.bookings.pending-count');
         Route::post('/pos/bookings/{booking}/confirm', [PosController::class, 'confirmBooking'])->name('pos.bookings.confirm');
         Route::post('/pos/bookings/{booking}/cancel', [PosController::class, 'cancelBooking'])->name('pos.bookings.cancel');
         Route::post('/pos/bookings/{booking}/complete', [PosController::class, 'completeBooking'])->name('pos.bookings.complete');
+
+        // Permintaan sewa dari pelanggan (mirip booking: perlu konfirmasi kasir)
+        Route::get('/pos/rental-requests', [PosRentalRequestController::class, 'index'])->name('pos.rental-requests.index');
+        Route::post('/pos/rental-requests/{rentalRequest}/confirm', [PosRentalRequestController::class, 'confirm'])->name('pos.rental-requests.confirm');
+        Route::post('/pos/rental-requests/{rentalRequest}/cancel', [PosRentalRequestController::class, 'cancel'])->name('pos.rental-requests.cancel');
+        Route::post('/pos/rental-requests/{rentalRequest}/complete', [PosRentalRequestController::class, 'complete'])->name('pos.rental-requests.complete');
 
         // Pesanan menu hasil scan barcode pelanggan
         Route::get('/pos/orders', [PosController::class, 'orders'])->name('pos.orders');
@@ -141,13 +181,11 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/dashboard', function () {
         $user = auth()->user();
 
-        if ($user->isCustomer()) {
-            return redirect()->route('customer.dashboard');
+        if ($user === null) {
+            return redirect()->route('login');
         }
 
-        return $user->isOwner()
-            ? redirect()->route('owner.dashboard')
-            : redirect()->route('units.index');
+        return redirect()->route($user->landingRoute());
     })->name('dashboard');
 });
 

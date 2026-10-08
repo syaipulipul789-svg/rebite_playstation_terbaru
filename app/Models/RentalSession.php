@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\PaymentMethod;
 use App\Enums\RentalSessionStatus;
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -155,6 +156,14 @@ class RentalSession extends Model
         $endAt = $this->start_time->copy()->addMinutes($this->planned_minutes);
 
         return max(0, now()->diffInSeconds($endAt, false));
+    }
+
+    /**
+     * Perkiraan waktu sesi berakhir = jam mulai + durasi yang direncanakan.
+     */
+    public function estimatedEndTime(): Carbon
+    {
+        return $this->start_time->copy()->addMinutes($this->planned_minutes);
     }
 
     public function elapsedSeconds(): int

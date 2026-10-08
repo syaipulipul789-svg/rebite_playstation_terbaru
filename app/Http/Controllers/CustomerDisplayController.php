@@ -55,7 +55,7 @@ class CustomerDisplayController extends Controller
         }
 
         $units = Unit::query()
-            ->with(['runningSession'])
+            ->with(['runningSession', 'confirmedBookings'])
             ->orderBy('type')
             ->orderBy('code')
             ->get();
@@ -66,8 +66,8 @@ class CustomerDisplayController extends Controller
             'units' => $units,
             'stats' => [
                 'total' => $units->count(),
-                'ready' => $units->where('status', UnitStatus::READY)->count(),
-                'busy' => $units->where('status', UnitStatus::BUSY)->count(),
+                'ready' => $units->filter(fn (Unit $unit) => $unit->status === UnitStatus::READY && $unit->confirmedBookings->isEmpty())->count(),
+                'busy' => $units->filter(fn (Unit $unit) => $unit->status === UnitStatus::BUSY || ($unit->status === UnitStatus::READY && $unit->confirmedBookings->isNotEmpty()))->count(),
                 'maintenance' => $units->where('status', UnitStatus::MAINTENANCE)->count(),
             ],
             'ratePackages' => RatePackage::query()->active()->ordered()->get(),

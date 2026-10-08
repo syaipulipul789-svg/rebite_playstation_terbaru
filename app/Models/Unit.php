@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\BookingStatus;
 use App\Enums\UnitStatus;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -41,6 +42,31 @@ class Unit extends Model
         return $this->hasOne(RentalSession::class)
             ->where('status', 'RUNNING')
             ->latest('start_time');
+    }
+
+    /**
+     * Booking reservasi yang menempel ke unit (kolom `console_id`).
+     */
+    public function bookings(): HasMany
+    {
+        return $this->hasMany(Booking::class, 'console_id');
+    }
+
+    /**
+     * Booking yang sudah dikonfirmasi dan masih mengunci slot unit ini,
+     * diurutkan berdasarkan jam mulai. Dipakai untuk tahu apakah unit sedang
+     * "dipesan" dan kapan slot berikutnya bebas.
+     */
+    public function confirmedBookings(): HasMany
+    {
+        return $this->bookings()
+            ->where('status', BookingStatus::CONFIRMED)
+            ->orderBy('start_time');
+    }
+
+    public function rentalRequests(): HasMany
+    {
+        return $this->hasMany(RentalRequest::class);
     }
 
     public function scopeReady(Builder $query): Builder

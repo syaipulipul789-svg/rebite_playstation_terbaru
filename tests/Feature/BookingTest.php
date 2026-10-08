@@ -339,6 +339,34 @@ class BookingTest extends TestCase
         $this->assertDatabaseCount('bookings', 0);
     }
 
+    public function test_menu_kasir_menampilkan_jumlah_booking_menunggu_dan_berkurang_setelah_disetujui(): void
+    {
+        $cashier = $this->makeCashier();
+        $this->makeOpenShift($cashier);
+        $first = $this->makeBooking($this->makeUnit(), now()->addHours(2), BookingStatus::PENDING);
+        $this->makeBooking($this->makeUnit(), now()->addHours(3), BookingStatus::PENDING);
+        $this->makeBooking($this->makeUnit(), now()->addHours(4), BookingStatus::CONFIRMED);
+
+        $this->actingAs($cashier)->get(route('units.index'))
+            ->assertOk()
+            ->assertSee('2 booking menunggu persetujuan');
+
+        $this->actingAs($cashier)->getJson(route('pos.bookings.pending-count'))
+            ->assertOk()
+            ->assertJsonPath('count', 2);
+
+        $this->actingAs($cashier)->post(route('pos.bookings.confirm', $first))->assertRedirect();
+
+        $this->actingAs($cashier)->get(route('pos.bookings'))
+            ->assertOk()
+            ->assertSee('1 booking menunggu persetujuan')
+            ->assertDontSee('2 booking menunggu persetujuan');
+
+        $this->actingAs($cashier)->getJson(route('pos.bookings.pending-count'))
+            ->assertOk()
+            ->assertJsonPath('count', 1);
+    }
+
     public function test_kasir_dapat_melihat_booking_dan_mengkonfirmasinya(): void
     {
         $cashier = $this->makeCashier();

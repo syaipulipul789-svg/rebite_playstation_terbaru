@@ -26,6 +26,7 @@ class User extends Authenticatable
 
     protected $hidden = [
         'password',
+        'google_id',
         'remember_token',
     ];
 
@@ -88,6 +89,11 @@ class User extends Authenticatable
     public function isCustomer(): bool
     {
         return $this->role === UserRole::CUSTOMER;
+    }
+
+    public function isStaff(): bool
+    {
+        return $this->role->isStaff();
     }
 
     /**

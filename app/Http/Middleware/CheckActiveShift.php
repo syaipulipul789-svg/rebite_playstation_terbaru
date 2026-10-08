@@ -25,6 +25,10 @@ class CheckActiveShift
             return $next($request);
         }
 
+        if (! $user->isStaff()) {
+            abort(403);
+        }
+
         if ($user->isOwner()) {
             return $next($request);
         }

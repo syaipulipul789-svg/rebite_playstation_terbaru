@@ -24,6 +24,7 @@ final class CustomerAvailability
     public static function bookingUnit(Unit $unit): array
     {
         $session = $unit->runningSession;
+        $reservation = $unit->confirmedBookings->first();
 
         return [
             'id' => $unit->id,
@@ -33,9 +34,17 @@ final class CustomerAvailability
             'status' => $unit->status->value,
             'hourly_rate' => (float) $unit->hourly_rate,
             'is_free' => $unit->isFree(),
-            'session_end_timestamp' => $session !== null
-                ? $session->start_time->addMinutes($session->planned_minutes)->getTimestampMs()
+            'is_reserved' => $reservation !== null,
+            'reservation_label' => $reservation !== null
+                ? $reservation->start_time->format('d M Y H:i').' → '.$reservation->end_time->format('d M Y H:i')
                 : null,
+            'reservation_start_timestamp' => $reservation?->start_time->getTimestampMs(),
+            'reservation_end_timestamp' => $reservation?->end_time->getTimestampMs(),
+            'session_end_timestamp' => $session !== null
+                ? $session->start_time->copy()->addMinutes($session->planned_minutes)->getTimestampMs()
+                : null,
+            'session_remaining_minutes' => $session !== null ? max(0, (int) ceil($session->remainingSeconds() / 60)) : null,
+            'session_package_name' => $session?->package_name ?? 'Open Play',
         ];
     }
 

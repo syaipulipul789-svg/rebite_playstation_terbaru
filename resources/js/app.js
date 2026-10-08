@@ -18,6 +18,28 @@ window.axios.defaults.headers.common['Accept'] = 'application/json';
 
 window.Alpine = Alpine;
 
+Alpine.data('cashierLayout', (config = {}) => ({
+    sidebar: false,
+    pendingBookings: config.initial ?? 0,
+
+    init() {
+        if (!config.url) return;
+
+        this.pendingTimer = setInterval(async () => {
+            try {
+                const { data } = await window.axios.get(config.url);
+                this.pendingBookings = data.count;
+            } catch {
+                // Pertahankan angka terakhir jika koneksi terputus.
+            }
+        }, 10000);
+    },
+
+    destroy() {
+        clearInterval(this.pendingTimer);
+    },
+}));
+
 /* ------------------------------------------------------------------ *
  * Toast notification global
  * ------------------------------------------------------------------ */

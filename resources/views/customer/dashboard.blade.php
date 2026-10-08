@@ -1,5 +1,4 @@
 @use('App\Enums\UnitStatus', 'UnitStatus')
-@use('App\Support\Money', 'Money')
 
 <!DOCTYPE html>
 <html lang="id" class="dark scroll-smooth">
@@ -35,6 +34,16 @@
                     <span class="tabular text-slate-600">· {{ auth()->user()->phone }}</span>
                 </span>
 
+                <a href="{{ route('customer.rentals.index') }}" class="btn-subtle">
+                    <x-icon name="clipboard-list" class="h-3.5 w-3.5" />
+                    Permintaan Sewa
+                </a>
+
+                <a href="{{ route('account.settings') }}" class="btn-subtle">
+                    <x-icon name="settings-2" class="h-3.5 w-3.5" />
+                    Pengaturan Akun
+                </a>
+
                 <a href="{{ route('customer.home') }}" class="btn-subtle">
                     <x-icon name="home" class="h-3.5 w-3.5" />
                     Beranda
@@ -51,7 +60,7 @@
         </div>
     </header>
 
-    <main class="mx-auto max-w-6xl space-y-12 px-4 py-10 sm:px-6">
+    <main class="mx-auto max-w-6xl space-y-12 px-4 py-10 sm:px-6" x-data="bookingPanel({ units: {{ Js::from($bookingUnits) }}, url: @js(route('customer.bookings.store')) })" x-on:customer-units-updated.window="updateUnits($event.detail)">
 
         @include('layouts.partials.flash')
 
@@ -62,14 +71,14 @@
                     <h1 class="text-2xl font-extrabold text-white sm:text-3xl">Booking Saya</h1>
                     <p class="mt-1 text-sm text-slate-500">
                         Slot yang sudah Anda pesan langsung terkunci — pelanggan lain tidak bisa memakai jam yang sama.
-                        Status unit berubah jadi <strong class="font-semibold text-emerald-300">Terisi</strong>
-                        selama Anda bermain.
+                        Setelah kasir menyetujui, jadwal unit ditandai <strong class="font-semibold text-emerald-300">Terisi</strong>
+                        agar pelanggan lain bisa melihatnya. Sesi berjalan saat jam main tiba.
                     </p>
                 </div>
-                <p class="text-xs text-slate-500" x-show="lastSync" x-text="lastSync"></p>
             </div>
 
             <div x-data="myBookings({ initial: {{ Js::from($myBookings) }}, url: @js(route('customer.bookings.status')) })">
+                <p class="mb-3 text-right text-xs text-slate-500" x-show="lastSync" x-text="lastSync"></p>
                 <template x-if="bookings.length === 0">
                     <div class="card px-6 py-14 text-center">
                         <x-icon name="calendar-days" class="mx-auto h-9 w-9 text-slate-700" />
@@ -127,12 +136,12 @@
                 </div>
                 <a href="#units" class="card p-5 ring-1 ring-inset ring-emerald-500/30 transition hover:bg-white/5">
                     <p class="text-[10px] font-bold uppercase tracking-widest text-emerald-400/70">Siap Main</p>
-                    <p class="tabular mt-2 text-3xl font-extrabold text-emerald-300">{{ $stats['ready'] }}</p>
+                    <p class="tabular mt-2 text-3xl font-extrabold text-emerald-300"><span x-text="availableCount">{{ $stats['ready'] }}</span></p>
                     <p class="mt-1 text-[11px] text-slate-500">Bisa langsung dipesan</p>
                 </a>
                 <div class="card p-5 ring-1 ring-inset ring-rose-500/30">
-                    <p class="text-[10px] font-bold uppercase tracking-widest text-rose-400/70">Sedang Dipakai</p>
-                    <p class="tabular mt-2 text-3xl font-extrabold text-rose-300">{{ $stats['busy'] }}</p>
+                    <p class="text-[10px] font-bold uppercase tracking-widest text-rose-400/70">Terisi / Dipesan</p>
+                    <p class="tabular mt-2 text-3xl font-extrabold text-rose-300"><span x-text="occupiedCount">{{ $stats['busy'] }}</span></p>
                 </div>
                 <div class="card p-5 ring-1 ring-inset ring-amber-500/30">
                     <p class="text-[10px] font-bold uppercase tracking-widest text-amber-400/70">Dalam Servis</p>
@@ -142,12 +151,12 @@
         </section>
 
         {{-- ================= STATUS UNIT ================= --}}
-        <section id="units" class="scroll-mt-8" x-data="bookingPanel({ units: {{ Js::from($bookingUnits) }}, url: @js(route('customer.bookings.store')) })">
+        <section id="units" class="scroll-mt-8">
             <div class="mb-6 flex flex-wrap items-end justify-between gap-3">
                 <div>
-                    <h2 class="text-2xl font-extrabold text-white sm:text-3xl">Pilih Unit Kosong</h2>
+                    <h2 class="text-2xl font-extrabold text-white sm:text-3xl">Pilih Unit &amp; Jadwal</h2>
                     <p class="mt-1 text-sm text-slate-500">
-                        Hijau = kosong dan bisa dipesan sekarang. Merah = sedang dipakai, tapi jam berikutnya bisa dipesan.
+                        Hijau = belum terisi. Merah = sedang dipakai atau sudah dipesan untuk jadwal yang tertera. Jam lain tetap bisa dipesan.
                     </p>
                 </div>
                 <a href="{{ route('customer.display') }}" class="btn-subtle">
@@ -165,38 +174,22 @@
                 <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                     @foreach ($units as $unit)
                         @php($indicator = $unit->status->indicator())
-                        @php($session = $unit->runningSession)
 
-                        <div class="card relative overflow-hidden p-5 transition duration-200 hover:border-white/15 {{ $indicator['ring'] }}">
+                        <div class="card relative overflow-hidden p-5 transition duration-200 hover:border-white/15" x-bind:class="unitCard({{ $unit->id }})?.status === 'BUSY' || unitCard({{ $unit->id }})?.is_reserved ? 'ring-rose-500/40' : '{{ $indicator['ring'] }}'">
                             <div class="flex items-start justify-between gap-3">
                                 <div class="min-w-0">
                                     <p class="text-[10px] font-bold uppercase tracking-widest text-slate-500">{{ $unit->type }}</p>
                                     <h3 class="mt-1 truncate text-base font-extrabold text-white">{{ $unit->name }}</h3>
                                     <p class="tabular mt-0.5 text-xs text-slate-500">{{ $unit->code }}</p>
                                 </div>
-                                <span class="mt-1 h-2.5 w-2.5 shrink-0 rounded-full {{ $indicator['dot'] }}"></span>
+                                <span class="mt-1 h-2.5 w-2.5 shrink-0 rounded-full" x-bind:class="unitCard({{ $unit->id }})?.status === 'BUSY' || unitCard({{ $unit->id }})?.is_reserved ? 'bg-rose-400' : '{{ $indicator['dot'] }}'"></span>
                             </div>
 
                             <div class="mt-5 border-t border-white/5 pt-4">
-                                @if ($unit->status === UnitStatus::READY)
-                                    <p class="text-lg font-extrabold tracking-wide text-emerald-300">KOSONG</p>
-                                    <p class="mt-1 text-sm text-emerald-200/60">
-                                        {{ $unit->isFree()
-                                            ? 'Gratis · Open Play'
-                                            : Money::format($unit->hourly_rate).' / jam' }}
-                                    </p>
-                                @elseif ($unit->status === UnitStatus::BUSY)
-                                    <p class="text-lg font-extrabold tracking-wide text-rose-300">TERISI</p>
-                                    @if ($session)
-                                        @php($remaining = max(0, $session->remainingSeconds()))
-                                        <p class="tabular mt-1 text-sm {{ $remaining <= 0 ? 'text-amber-300' : 'text-rose-200/70' }}">
-                                            {{ $remaining <= 0
-                                                ? 'Waktu habis · segera selesai'
-                                                : 'Sisa ± '.ceil($remaining / 60).' menit · '.($session->package_name ?? 'Open Play') }}
-                                        </p>
-                                    @else
-                                        <p class="mt-1 text-sm text-rose-200/70">Sedang dipakai pengunjung</p>
-                                    @endif
+                                @if ($unit->status === UnitStatus::READY || $unit->status === UnitStatus::BUSY)
+                                    <p class="text-lg font-extrabold tracking-wide" x-bind:class="unitCard({{ $unit->id }})?.status === 'BUSY' || unitCard({{ $unit->id }})?.is_reserved ? 'text-rose-300' : 'text-emerald-300'" x-text="unitCard({{ $unit->id }})?.status === 'BUSY' || unitCard({{ $unit->id }})?.is_reserved ? 'TERISI' : 'KOSONG'"></p>
+                                    <p class="mt-1 text-sm text-slate-400" x-text="unitDescription({{ $unit->id }})"></p>
+                                    <p x-cloak x-show="unitCard({{ $unit->id }})?.status === 'BUSY' && unitCard({{ $unit->id }})?.is_reserved" class="mt-1 text-xs text-rose-300" x-text="'Dipesan: ' + unitCard({{ $unit->id }})?.reservation_label"></p>
                                 @else
                                     <p class="text-lg font-extrabold tracking-wide text-amber-300">SERVIS</p>
                                     <p class="mt-1 text-sm text-amber-200/60">Sedang dalam perbaikan</p>
@@ -210,7 +203,7 @@
                                     class="btn-primary mt-4 w-full text-xs"
                                 >
                                     <x-icon name="calendar-days" class="h-3.5 w-3.5" />
-                                    {{ $unit->status === UnitStatus::READY ? 'Booking Konsol Ini' : 'Booking Jam Berikutnya' }}
+                                    <span x-text="unitCard({{ $unit->id }})?.status === 'BUSY' || unitCard({{ $unit->id }})?.is_reserved ? 'Booking Jam Lain' : 'Booking Konsol Ini'"></span>
                                 </button>
                             @endif
                         </div>
@@ -256,10 +249,10 @@
                             </button>
                         </div>
 
-                        <template x-if="unit?.status === 'BUSY'">
+                        <template x-if="unit?.status === 'BUSY' || unit?.is_reserved">
                             <p class="mt-3 flex items-start gap-2 rounded-xl bg-rose-500/10 px-3 py-2.5 text-xs text-rose-200">
                                 <x-icon name="clock" class="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                                Unit sedang dipakai — jam mulai otomatis disesuaikan untuk slot berikutnya.
+                                <span x-text="unit.status === 'BUSY' ? 'Unit sedang dipakai. Pilih jam setelah sesi selesai.' : 'Sudah dipesan: ' + unit.reservation_label + '. Pilih jam di luar jadwal tersebut.'"></span>
                             </p>
                         </template>
 
@@ -296,8 +289,8 @@
                                 </div>
 
                                 <p class="mt-3 text-xs text-slate-500">
-                                    Slot jam ini sudah terkunci untuk Anda. Unit ditandai
-                                    <strong class="font-semibold text-emerald-300">Terisi</strong> oleh kasir saat Anda mulai bermain.
+                                    Slot jam ini sudah terkunci untuk Anda. Setelah disetujui kasir, jadwal unit terlihat
+                                    <strong class="font-semibold text-emerald-300">Terisi</strong> bagi pelanggan lain.
                                     Tunjukkan kode booking ini saat datang.
                                 </p>
 

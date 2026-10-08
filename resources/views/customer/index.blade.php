@@ -105,9 +105,8 @@
                     </h2>
                     <p class="mt-2 max-w-2xl text-sm leading-relaxed text-slate-400">
                         Daftar sekali pakai nomor WhatsApp, lalu pilih unit yang kosong beserta jam mainnya.
-                        Slot langsung terkunci untuk Anda, dan status unit berubah jadi
-                        <strong class="font-semibold text-emerald-300">Terisi</strong> selama Anda bermain —
-                        pelanggan lain langsung melihatnya berubah.
+                        Slot langsung terkunci untuk Anda. Setelah disetujui kasir, jadwal unit ditandai
+                        <strong class="font-semibold text-emerald-300">Terisi</strong> dan terlihat oleh pelanggan lain.
                     </p>
                     <p class="mt-3 text-sm text-slate-500">
                         Sudah punya akun?
@@ -140,7 +139,7 @@
                     <p class="tabular mt-2 text-3xl font-extrabold text-emerald-300">{{ $stats['ready'] }}</p>
                 </div>
                 <div class="card p-5 ring-1 ring-inset ring-rose-500/30">
-                    <p class="text-[10px] font-bold uppercase tracking-widest text-rose-400/70">Sedang Dipakai</p>
+                    <p class="text-[10px] font-bold uppercase tracking-widest text-rose-400/70">Terisi / Dipesan</p>
                     <p class="tabular mt-2 text-3xl font-extrabold text-rose-300">{{ $stats['busy'] }}</p>
                 </div>
                 <div class="card p-5 ring-1 ring-inset ring-amber-500/30">
@@ -171,7 +170,8 @@
             @else
                 <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                     @foreach ($units as $unit)
-                        @php($indicator = $unit->status->indicator())
+                        @php($reservation = $unit->confirmedBookings->first())
+                        @php($indicator = ($unit->status === UnitStatus::READY && $reservation !== null ? UnitStatus::BUSY : $unit->status)->indicator())
                         @php($session = $unit->runningSession)
 
                         <div class="card relative overflow-hidden p-5 transition duration-200 hover:border-white/15 {{ $indicator['ring'] }}">
@@ -185,7 +185,10 @@
                             </div>
 
                             <div class="mt-5 border-t border-white/5 pt-4">
-                                @if ($unit->status === UnitStatus::READY)
+                                @if ($unit->status === UnitStatus::READY && $reservation !== null)
+                                    <p class="text-lg font-extrabold tracking-wide text-rose-300">TERISI</p>
+                                    <p class="mt-1 text-sm text-rose-200/70">Dipesan: {{ $reservation->start_time->format('d M Y H:i') }} → {{ $reservation->end_time->format('d M Y H:i') }}</p>
+                                @elseif ($unit->status === UnitStatus::READY)
                                     <p class="text-lg font-extrabold tracking-wide text-emerald-300">READY</p>
                                     <p class="mt-1 text-sm text-emerald-200/60">
                                         {{ $unit->isFree()
@@ -204,21 +207,24 @@
                                     @else
                                         <p class="mt-1 text-sm text-rose-200/70">Sedang dipakai pengunjung</p>
                                     @endif
+                                    @if ($reservation !== null)
+                                        <p class="mt-1 text-xs text-rose-300">Dipesan: {{ $reservation->start_time->format('d M Y H:i') }} → {{ $reservation->end_time->format('d M Y H:i') }}</p>
+                                    @endif
                                 @else
                                     <p class="text-lg font-extrabold tracking-wide text-amber-300">SERVIS</p>
                                     <p class="mt-1 text-sm text-amber-200/60">Sedang dalam perbaikan</p>
                                 @endif
                             </div>
 
-                            @if ($unit->status === UnitStatus::READY)
+                            @if ($unit->status === UnitStatus::READY && $reservation === null)
                                 <a href="{{ route('login') }}" class="btn-primary mt-4 w-full text-xs">
                                     <x-icon name="calendar-days" class="h-3.5 w-3.5" />
                                     Booking Konsol Ini
                                 </a>
-                            @elseif ($unit->status === UnitStatus::BUSY)
+                            @elseif ($unit->status === UnitStatus::READY || $unit->status === UnitStatus::BUSY)
                                 <a href="{{ route('login') }}" class="btn-primary mt-4 w-full text-xs">
                                     <x-icon name="calendar-days" class="h-3.5 w-3.5" />
-                                    Booking Jam Berikutnya
+                                    Booking Jam Lain
                                 </a>
                             @endif
                         </div>

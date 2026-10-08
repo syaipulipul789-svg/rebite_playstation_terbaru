@@ -22,6 +22,8 @@ class ShiftController extends Controller
     {
         $user = $request->user();
 
+        abort_unless($user->isStaff(), 403);
+
         if ($user->isOwner()) {
             return redirect()->route('owner.dashboard');
         }

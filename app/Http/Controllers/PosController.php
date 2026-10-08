@@ -16,6 +16,7 @@ use App\Services\BookingService;
 use App\Services\OrderService;
 use App\Services\ShiftService;
 use App\Support\Money;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -98,6 +99,13 @@ class PosController extends Controller
             'pendingCount' => $bookings
                 ->where('status', BookingStatus::PENDING)
                 ->count(),
+        ]);
+    }
+
+    public function pendingBookingsCount(): JsonResponse
+    {
+        return response()->json([
+            'count' => Booking::query()->where('status', BookingStatus::PENDING)->count(),
         ]);
     }
 

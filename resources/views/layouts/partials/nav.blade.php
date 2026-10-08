@@ -19,8 +19,11 @@
             ['route' => 'pos.index', 'label' => 'Kasir / POS', 'icon' => 'receipt', 'match' => 'pos.index'],
             ['route' => 'pos.orders', 'label' => 'Pesanan Barcode', 'icon' => 'barcode', 'match' => 'pos.orders'],
             ['route' => 'pos.bookings', 'label' => 'Daftar Booking', 'icon' => 'calendar-days', 'match' => 'pos.bookings'],
+            ['route' => 'pos.rental-requests.index', 'label' => 'Permintaan Sewa', 'icon' => 'clipboard-list', 'match' => 'pos.rental-requests'],
             ['route' => 'shift.end', 'label' => 'Rekonsiliasi Shift', 'icon' => 'wallet', 'match' => 'shift.end'],
         ];
+
+    $menu[] = ['route' => 'account.settings', 'label' => 'Pengaturan Akun', 'icon' => 'settings-2', 'match' => 'account.settings'];
 @endphp
 
 @foreach ($menu as $item)
@@ -48,6 +51,11 @@
             </span>
 
             {{ $item['label'] }}
+            @if ($item['route'] === 'pos.bookings')
+                <span x-cloak x-show="pendingBookings > 0" class="ml-auto rounded-full bg-amber-500/20 px-2 py-0.5 text-xs font-extrabold text-amber-300 ring-1 ring-inset ring-amber-500/30" x-bind:aria-label="`${pendingBookings} booking menunggu persetujuan`" aria-label="{{ $pendingNavBookingsCount }} booking menunggu persetujuan" x-text="pendingBookings">
+                    {{ $pendingNavBookingsCount }}
+                </span>
+            @endif
         </a>
     @endif
 @endforeach

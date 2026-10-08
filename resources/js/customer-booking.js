@@ -23,8 +23,44 @@ document.addEventListener('alpine:init', () => {
         fieldErrors: {},
         result: null,
 
+        get availableCount() {
+            return this.units.filter((unit) => unit.status === 'READY' && !unit.is_reserved).length;
+        },
+
+        get occupiedCount() {
+            return this.units.filter((unit) => unit.status === 'BUSY' || unit.is_reserved).length;
+        },
+
+        unitCard(unitId) {
+            return this.units.find((unit) => unit.id === unitId);
+        },
+
+        updateUnits(units) {
+            this.units = units;
+            if (this.unit) {
+                this.unit = this.unitCard(this.unit.id) ?? this.unit;
+            }
+        },
+
+        unitDescription(unitId) {
+            const unit = this.unitCard(unitId);
+            if (!unit) return '';
+
+            if (unit.status === 'BUSY') {
+                return unit.session_remaining_minutes === null
+                    ? 'Sedang dipakai pengunjung'
+                    : unit.session_remaining_minutes === 0
+                        ? 'Waktu habis · segera selesai'
+                        : `Sisa ± ${unit.session_remaining_minutes} menit · ${unit.session_package_name}`;
+            }
+
+            if (unit.is_reserved) return `Dipesan: ${unit.reservation_label}`;
+
+            return unit.is_free ? 'Gratis · Open Play' : `${window.Rebite.rupiah(unit.hourly_rate)} / jam`;
+        },
+
         openBooking(unitId) {
-            const unit = this.units.find((u) => u.id === unitId);
+            const unit = this.unitCard(unitId);
             if (!unit) return;
 
             this.unit = unit;
@@ -68,7 +104,13 @@ document.addEventListener('alpine:init', () => {
             nextHour.setMinutes(0, 0, 0);
 
             if (unit.session_end_timestamp && unit.session_end_timestamp > nextHour.getTime()) {
-                return this.toInputValue(new Date(unit.session_end_timestamp));
+                nextHour.setTime(unit.session_end_timestamp);
+            }
+
+            if (unit.reservation_start_timestamp &&
+                unit.reservation_start_timestamp < nextHour.getTime() + 60 * 60 * 1000 &&
+                unit.reservation_end_timestamp > nextHour.getTime()) {
+                nextHour.setTime(unit.reservation_end_timestamp);
             }
 
             return this.toInputValue(nextHour);
@@ -154,6 +196,7 @@ document.addEventListener('alpine:init', () => {
                 const { data } = await window.axios.get(this.url);
 
                 this.bookings = data.bookings;
+                window.dispatchEvent(new CustomEvent('customer-units-updated', { detail: data.units }));
                 this.lastSync = 'Diperbarui ' + new Date().toLocaleTimeString('id-ID', {
                     hour: '2-digit',
                     minute: '2-digit',

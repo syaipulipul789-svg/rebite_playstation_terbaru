@@ -380,6 +380,80 @@ class CustomerBookingTest extends TestCase
             ->assertSee('TERISI');
     }
 
+    public function test_playbox_disetujui_terlihat_terisi_oleh_pelanggan_lain_dan_kembali_kosong_setelah_dibatalkan(): void
+    {
+        $first = $this->makeCustomer();
+        $other = $this->makeCustomer('089999999999');
+        $cashier = $this->makeCashier();
+        $this->makeOpenShift($cashier);
+        $unit = $this->makeUnit(['type' => 'PLAYBOX', 'name' => 'Playbox 1']);
+        $start = now()->addHours(3)->startOfHour();
+
+        $this->actingAs($first)->postJson(route('customer.bookings.store'), [
+            'console_id' => $unit->id,
+            'start_time' => $start->format('Y-m-d H:i'),
+            'duration_hours' => 2,
+        ])->assertCreated();
+
+        $booking = Booking::query()->where('console_id', $unit->id)->firstOrFail();
+        $this->assertSame(UnitStatus::READY, $unit->fresh()->status);
+
+        $this->actingAs($other)->getJson(route('customer.bookings.status'))
+            ->assertOk()
+            ->assertJsonPath('units.0.is_reserved', false);
+
+        $this->actingAs($cashier)->post(route('pos.bookings.confirm', $booking))->assertRedirect();
+
+        $this->assertSame(UnitStatus::READY, $unit->fresh()->status);
+        $this->assertNull($booking->fresh()->rental_session_id);
+
+        $this->actingAs($other)->getJson(route('customer.bookings.status'))
+            ->assertOk()
+            ->assertJsonCount(0, 'bookings')
+            ->assertJsonPath('units.0.is_reserved', true)
+            ->assertJsonPath('units.0.reservation_label', $start->format('d M Y H:i').' → '.$start->copy()->addHours(2)->format('d M Y H:i'));
+
+        $this->actingAs($other)->get(route('customer.dashboard'))
+            ->assertOk()
+            ->assertViewHas('stats', fn (array $stats) => $stats['ready'] === 0 && $stats['busy'] === 1)
+            ->assertViewHas('bookingUnits', fn (array $units) => $units[0]['is_reserved'] === true && $units[0]['status'] === UnitStatus::READY->value);
+
+        $this->actingAs($cashier)->post(route('pos.bookings.cancel', $booking))->assertRedirect();
+
+        $this->actingAs($other)->getJson(route('customer.bookings.status'))
+            ->assertOk()
+            ->assertJsonPath('units.0.is_reserved', false);
+
+        $this->actingAs($other)->get(route('customer.dashboard'))
+            ->assertOk()
+            ->assertViewHas('stats', fn (array $stats) => $stats['ready'] === 1 && $stats['busy'] === 0);
+    }
+
+    public function test_halaman_publik_memperlihatkan_jadwal_playbox_yang_sudah_disetujui(): void
+    {
+        $unit = $this->makeUnit(['type' => 'PLAYBOX', 'name' => 'Playbox Publik']);
+        $customer = $this->makeCustomer();
+        $cashier = $this->makeCashier();
+        $this->makeOpenShift($cashier);
+
+        $this->actingAs($customer)->postJson(route('customer.bookings.store'), [
+            'console_id' => $unit->id,
+            'start_time' => now()->addHours(4)->startOfHour()->format('Y-m-d H:i'),
+            'duration_hours' => 1,
+        ])->assertCreated();
+
+        $booking = Booking::query()->where('console_id', $unit->id)->firstOrFail();
+        $this->actingAs($cashier)->post(route('pos.bookings.confirm', $booking))->assertRedirect();
+        $this->post(route('logout'));
+
+        $this->get(route('customer.home'))
+            ->assertOk()
+            ->assertSee('Playbox Publik')
+            ->assertSee('TERISI')
+            ->assertSee('Dipesan: '.$booking->start_time->format('d M Y H:i'))
+            ->assertDontSee('READY');
+    }
+
     /*
     |--------------------------------------------------------------------------
     | PENDING mengunci slot

@@ -61,6 +61,16 @@
         </button>
     </form>
 
+    @if (filled(config('services.google.client_id')) && filled(config('services.google.client_secret')))
+        <div class="my-5 flex items-center gap-3 text-xs text-slate-500">
+            <span class="h-px flex-1 bg-white/10"></span>atau<span class="h-px flex-1 bg-white/10"></span>
+        </div>
+        <a href="{{ route('google.redirect') }}" class="btn-subtle w-full">
+            Masuk dengan Google
+        </a>
+        <p class="mt-2 text-center text-xs text-slate-500">Kasir dan owner harus menghubungkan Google dari Pengaturan Akun terlebih dahulu.</p>
+    @endif
+
     <p class="mt-6 text-center text-sm text-slate-500">
         Pelanggan belum punya akun?
         <a href="{{ route('register') }}" class="font-semibold text-brand-400 hover:text-brand-300">

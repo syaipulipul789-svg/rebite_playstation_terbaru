@@ -40,8 +40,8 @@
                 <div>
                     <h2 class="text-sm font-bold text-white">Booking Reservasi Online</h2>
                     <p class="mt-0.5 text-xs text-slate-500">
-                        Confirm = unit langsung <span class="font-semibold text-brand-300">Terisi</span> dan monitor mulai menghitung mundur.
-                        Booking untuk jam nanti berubah otomatis saat jam mulai.
+                        Setelah disetujui, jadwal unit tampil <span class="font-semibold text-brand-300">Terisi</span> bagi pelanggan lain.
+                        Sesi rental dan hitung mundur dimulai saat jam booking tiba.
                         Tombol <span class="font-semibold text-slate-400">Kirim WA Konfirmasi</span> membuka WhatsApp
                         pelanggan dengan pesan konfirmasi yang sudah terisi otomatis.
                     </p>

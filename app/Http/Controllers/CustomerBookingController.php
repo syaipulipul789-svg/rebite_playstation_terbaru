@@ -29,7 +29,7 @@ class CustomerBookingController extends Controller
     public function index(Request $request): View
     {
         $units = Unit::query()
-            ->with(['runningSession'])
+            ->with(['runningSession', 'confirmedBookings'])
             ->orderBy('type')
             ->orderBy('code')
             ->get();
@@ -38,8 +38,8 @@ class CustomerBookingController extends Controller
             'units' => $units,
             'stats' => [
                 'total' => $units->count(),
-                'ready' => $units->where('status', UnitStatus::READY)->count(),
-                'busy' => $units->where('status', UnitStatus::BUSY)->count(),
+                'ready' => $units->filter(fn (Unit $unit) => $unit->status === UnitStatus::READY && $unit->confirmedBookings->isEmpty())->count(),
+                'busy' => $units->filter(fn (Unit $unit) => $unit->status === UnitStatus::BUSY || ($unit->status === UnitStatus::READY && $unit->confirmedBookings->isNotEmpty()))->count(),
                 'maintenance' => $units->where('status', UnitStatus::MAINTENANCE)->count(),
             ],
             'bookingUnits' => CustomerAvailability::bookingUnits($units),
@@ -85,6 +85,11 @@ class CustomerBookingController extends Controller
         return response()->json([
             'server_timestamp' => now()->getTimestampMs(),
             'bookings' => $this->myBookings($request),
+            'units' => CustomerAvailability::bookingUnits(Unit::query()
+                ->with(['runningSession', 'confirmedBookings'])
+                ->orderBy('type')
+                ->orderBy('code')
+                ->get()),
         ]);
     }
 

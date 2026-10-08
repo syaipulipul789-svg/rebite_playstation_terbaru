@@ -4,9 +4,42 @@ namespace App\Services;
 
 use App\Enums\ProductCategory;
 use App\Models\Product;
+use App\Models\RatePackage;
+use App\Models\Unit;
+use App\Support\Money;
 
 final class PricingService
 {
+    /**
+     * Perkiraan harga untuk satu permintaan sewa (rental request).
+     *
+     * Bila paket dipilih, harga memakai harga tetap paket. Untuk sisa durasi
+     * di luar durasi paket ditagih per jam dari tarif unit. Tanpa paket,
+     * seluruh durasi dihitung per jam terbanyak dari hourly_rate unit.
+     *
+     * @return array{hourly_rate: float, total_price: float}
+     */
+    public function calculate(Unit $unit, ?RatePackage $package, int $minutes): array
+    {
+        if ($package === null) {
+            $total = $this->durationFee((float) $unit->hourly_rate, $minutes);
+
+            return [
+                'hourly_rate' => (float) $unit->hourly_rate,
+                'total_price' => $total,
+            ];
+        }
+
+        $packageHours = max(1 / 60, $package->duration_minutes / 60);
+        $overMinutes = max(0, $minutes - $package->duration_minutes);
+        $total = $package->price + $this->durationFee((float) $unit->hourly_rate, $overMinutes);
+
+        return [
+            'hourly_rate' => round((float) $package->price / $packageHours, 2),
+            'total_price' => Money::round($total),
+        ];
+    }
+
     /**
      * Harga dasar durasi (menit) untuk sebuah unit.
      *

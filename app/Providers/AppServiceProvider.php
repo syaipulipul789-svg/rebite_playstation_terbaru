@@ -2,10 +2,12 @@
 
 namespace App\Providers;
 
+use App\Enums\BookingStatus;
 use App\Enums\PaymentMethod;
 use App\Enums\ProductCategory;
 use App\Enums\ShiftStatus;
 use App\Enums\UnitStatus;
+use App\Models\Booking;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
@@ -24,6 +26,12 @@ class AppServiceProvider extends ServiceProvider
         // aplikasi ini belum memakai N+1 yang mengganggu.
         Model::preventLazyLoading(false);
         Model::preventSilentlyDiscardingAttributes(! $this->app->isProduction());
+
+        View::composer('layouts.app', function ($view) {
+            $view->with('pendingNavBookingsCount', auth()->user()?->isCashier()
+                ? Booking::query()->where('status', BookingStatus::PENDING)->count()
+                : 0);
+        });
 
         View::composer('*', function ($view) {
             $view->with([
