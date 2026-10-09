@@ -6,22 +6,38 @@
  * pakai axios ke endpoint `config.url`; sukses/error ditampilkan langsung di
  * dalam modal tanpa reload halaman. Nama dan nomor WhatsApp diambil dari akun
  * pelanggan, jadi tidak ada di form.
+ *
+ * Modal yang sama juga melayani "Ajukan Sewa" (mode `rental`): pilih rentang
+ * waktu + paket, dikirim ke `config.rentalUrl`. Riwayat permintaan sewa ikut
+ * dikirim via `config.rentals` dan ditambahkan langsung setelah pengiriman
+ * berhasil.
  */
 document.addEventListener('alpine:init', () => {
     window.Alpine.data('bookingPanel', (config = {}) => ({
         units: config.units ?? [],
         url: config.url ?? '/customer/bookings',
+        rentalUrl: config.rentalUrl ?? '/customer/rentals',
+        ratePackages: config.ratePackages ?? [],
+        rentals: config.rentals ?? [],
         open: false,
+        mode: 'booking',
         unit: null,
         form: {
             start_time: '',
             duration_hours: 1,
             notes: '',
         },
+        rentalForm: {
+            start_time: '',
+            end_time: '',
+            package_id: '',
+            notes: '',
+        },
         submitting: false,
         error: null,
         fieldErrors: {},
         result: null,
+        rentalResult: null,
 
         get availableCount() {
             return this.units.filter((unit) => unit.status === 'READY' && !unit.is_reserved).length;
@@ -69,10 +85,35 @@ document.addEventListener('alpine:init', () => {
                 duration_hours: 1,
                 notes: '',
             };
+            this.mode = 'booking';
             this.submitting = false;
             this.error = null;
             this.fieldErrors = {};
             this.result = null;
+            this.rentalResult = null;
+            this.open = true;
+            this.lockScroll();
+        },
+
+        openRental(unitId) {
+            const unit = this.unitCard(unitId);
+            if (!unit) return;
+
+            const start = this.defaultStartTime(unit);
+
+            this.unit = unit;
+            this.rentalForm = {
+                start_time: start,
+                end_time: this.toInputValue(new Date(new Date(start).getTime() + 2 * 60 * 60 * 1000)),
+                package_id: '',
+                notes: '',
+            };
+            this.mode = 'rental';
+            this.submitting = false;
+            this.error = null;
+            this.fieldErrors = {};
+            this.result = null;
+            this.rentalResult = null;
             this.open = true;
             this.lockScroll();
         },
@@ -130,6 +171,45 @@ document.addEventListener('alpine:init', () => {
             return this.unit.is_free ? 'Gratis' : window.Rebite.rupiah(this.unit.hourly_rate * hours);
         },
 
+        get selectedPackage() {
+            return this.ratePackages.find((pkg) => pkg.id === Number(this.rentalForm.package_id)) ?? null;
+        },
+
+        get rentalDurationMinutes() {
+            const start = new Date(this.rentalForm.start_time);
+            const end = new Date(this.rentalForm.end_time);
+
+            if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) {
+                return 0;
+            }
+
+            return Math.round((end - start) / 60000);
+        },
+
+        /**
+         * Perkiraan harga untuk permintaan sewa — aturannya sama persis
+         * dengan PricingService di server: durasi dibulatkan ke jam utuh
+         * (ke atas), jadi angka di modal sama dengan tagihan final.
+         */
+        get rentalPricePreview() {
+            if (!this.unit || this.rentalDurationMinutes <= 0) return '';
+
+            const rate = this.unit.hourly_rate ?? 0;
+            const pkg = this.selectedPackage;
+            const total = pkg
+                ? pkg.price + rate * this.billableHours(Math.max(0, this.rentalDurationMinutes - pkg.duration_minutes))
+                : rate * this.billableHours(this.rentalDurationMinutes);
+
+            return window.Rebite.rupiah(Math.round(total));
+        },
+
+        /** Jam yang ditagih untuk sebuah durasi: pecahan jam = 1 jam penuh. */
+        billableHours(minutes) {
+            if (minutes <= 0) return 0;
+
+            return Math.max(1, Math.ceil(minutes / 60));
+        },
+
         async submit() {
             this.submitting = true;
             this.error = null;
@@ -149,6 +229,35 @@ document.addEventListener('alpine:init', () => {
                     total_price_label: data.total_price_label,
                     status: data.status,
                 };
+            } catch (err) {
+                const response = err.response;
+
+                if (response?.data?.errors) {
+                    this.fieldErrors = response.data.errors;
+                } else {
+                    this.error = response?.data?.message ?? 'Terjadi kesalahan. Silakan coba lagi.';
+                }
+            } finally {
+                this.submitting = false;
+            }
+        },
+
+        async submitRental() {
+            this.submitting = true;
+            this.error = null;
+            this.fieldErrors = {};
+
+            try {
+                const { data } = await window.axios.post(this.rentalUrl, {
+                    unit_id: this.unit.id,
+                    start_time: this.rentalForm.start_time,
+                    end_time: this.rentalForm.end_time,
+                    package_id: this.rentalForm.package_id || null,
+                    notes: this.rentalForm.notes,
+                });
+
+                this.rentalResult = data;
+                this.rentals.unshift(data);
             } catch (err) {
                 const response = err.response;
 

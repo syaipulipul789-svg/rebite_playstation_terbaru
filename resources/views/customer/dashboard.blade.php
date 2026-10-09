@@ -34,7 +34,7 @@
                     <span class="tabular text-slate-600">· {{ auth()->user()->phone }}</span>
                 </span>
 
-                <a href="{{ route('customer.rentals.index') }}" class="btn-subtle">
+                <a href="#rentals" class="btn-subtle">
                     <x-icon name="clipboard-list" class="h-3.5 w-3.5" />
                     Permintaan Sewa
                 </a>
@@ -60,7 +60,17 @@
         </div>
     </header>
 
-    <main class="mx-auto max-w-6xl space-y-12 px-4 py-10 sm:px-6" x-data="bookingPanel({ units: {{ Js::from($bookingUnits) }}, url: @js(route('customer.bookings.store')) })" x-on:customer-units-updated.window="updateUnits($event.detail)">
+    <main
+        class="mx-auto max-w-6xl space-y-12 px-4 py-10 sm:px-6"
+        x-data="bookingPanel({
+            units: {{ Js::from($bookingUnits) }},
+            url: @js(route('customer.bookings.store')),
+            rentalUrl: @js(route('customer.rentals.store')),
+            ratePackages: {{ Js::from($ratePackages) }},
+            rentals: {{ Js::from($rentals) }},
+        })"
+        x-on:customer-units-updated.window="updateUnits($event.detail)"
+    >
 
         @include('layouts.partials.flash')
 
@@ -205,6 +215,15 @@
                                     <x-icon name="calendar-days" class="h-3.5 w-3.5" />
                                     <span x-text="unitCard({{ $unit->id }})?.status === 'BUSY' || unitCard({{ $unit->id }})?.is_reserved ? 'Booking Jam Lain' : 'Booking Konsol Ini'"></span>
                                 </button>
+
+                                <button
+                                    type="button"
+                                    @click="openRental({{ $unit->id }})"
+                                    class="btn-subtle mt-2 w-full justify-center text-xs"
+                                >
+                                    <x-icon name="clipboard-list" class="h-3.5 w-3.5" />
+                                    Ajukan Sewa
+                                </button>
                             @endif
                         </div>
                     @endforeach
@@ -256,8 +275,8 @@
                             </p>
                         </template>
 
-                        {{-- RINGKASAN SUKSES --}}
-                        <template x-if="result">
+                        {{-- RINGKASAN SUKSES BOOKING --}}
+                        <template x-if="mode === 'booking' && result">
                             <div class="mt-4">
                                 <div class="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4">
                                     <p class="flex items-center gap-2 text-sm font-bold text-emerald-300">
@@ -300,8 +319,55 @@
                             </div>
                         </template>
 
+                        {{-- RINGKASAN SUKSES PERMINTAAN SEWA --}}
+                        <template x-if="mode === 'rental' && rentalResult">
+                            <div class="mt-4">
+                                <div class="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4">
+                                    <p class="flex items-center gap-2 text-sm font-bold text-emerald-300">
+                                        <x-icon name="check-circle-2" class="h-4 w-4" />
+                                        Permintaan sewa terkirim!
+                                    </p>
+                                    <p class="mt-3 text-[10px] font-bold uppercase tracking-widest text-slate-500">Kode Permintaan</p>
+                                    <p class="text-2xl font-extrabold tracking-wider text-brand-300" x-text="rentalResult.rental_code"></p>
+
+                                    <div class="mt-3">
+                                        <span class="badge" :class="rentalResult.status.badge_class" x-text="rentalResult.status.label"></span>
+                                    </div>
+
+                                    <dl class="mt-4 space-y-2 text-sm">
+                                        <div class="flex items-center justify-between gap-3">
+                                            <dt class="text-slate-500">Unit</dt>
+                                            <dd class="font-semibold text-slate-100" x-text="rentalResult.unit_name"></dd>
+                                        </div>
+                                        <div class="flex items-center justify-between gap-3">
+                                            <dt class="text-slate-500">Jadwal Sewa</dt>
+                                            <dd class="tabular text-right text-slate-100" x-text="rentalResult.start_time_label + ' → ' + rentalResult.end_time_label"></dd>
+                                        </div>
+                                        <div class="flex items-center justify-between gap-3">
+                                            <dt class="text-slate-500">Paket</dt>
+                                            <dd class="text-slate-100" x-text="rentalResult.package_name ?? 'Tanpa Paket'"></dd>
+                                        </div>
+                                        <div class="flex items-center justify-between gap-3">
+                                            <dt class="text-slate-500">Estimasi Biaya</dt>
+                                            <dd class="font-bold text-white" x-text="rentalResult.total_price_label"></dd>
+                                        </div>
+                                    </dl>
+                                </div>
+
+                                <p class="mt-3 text-xs text-slate-500">
+                                    Kasir akan memeriksa ketersediaan unit terlebih dahulu. Pantau statusnya di bagian
+                                    <strong class="font-semibold text-white">Permintaan Sewa Saya</strong> di bawah, lalu
+                                    tunjukkan kode ini saat datang.
+                                </p>
+
+                                <button type="button" x-on:click="close()" class="btn-primary mt-4 w-full">
+                                    Selesai
+                                </button>
+                            </div>
+                        </template>
+
                         {{-- FORM BOOKING --}}
-                        <template x-if="!result">
+                        <template x-if="mode === 'booking' && !result">
                             <form class="mt-4 space-y-4" x-on:submit.prevent="submit()">
                                 <div class="rounded-xl border border-white/5 bg-ink-850 px-4 py-3 text-xs">
                                     <p class="text-slate-500">Nama pemesan</p>
@@ -348,8 +414,151 @@
                                 </p>
                             </form>
                         </template>
+
+                        {{-- FORM PERMINTAAN SEWA --}}
+                        <template x-if="mode === 'rental' && !rentalResult">
+                            <form class="mt-4 space-y-4" x-on:submit.prevent="submitRental()">
+                                <div class="rounded-xl border border-white/5 bg-ink-850 px-4 py-3 text-xs">
+                                    <p class="text-slate-500">Nama pemesan</p>
+                                    <p class="mt-0.5 font-semibold text-white">{{ auth()->user()->name }}</p>
+                                    <p class="tabular mt-1 text-slate-600">{{ auth()->user()->phone }}</p>
+                                </div>
+
+                                <div class="grid gap-4 sm:grid-cols-2">
+                                    <div>
+                                        <label for="rr-start" class="label">Waktu Mulai</label>
+                                        <input id="rr-start" type="datetime-local" class="input" x-model="rentalForm.start_time">
+                                        <p class="mt-1 text-xs text-rose-400" x-text="fieldError('start_time')" x-show="fieldError('start_time')"></p>
+                                    </div>
+
+                                    <div>
+                                        <label for="rr-end" class="label">Waktu Selesai</label>
+                                        <input id="rr-end" type="datetime-local" class="input" x-model="rentalForm.end_time">
+                                        <p class="mt-1 text-xs text-rose-400" x-text="fieldError('end_time')" x-show="fieldError('end_time')"></p>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label for="rr-package" class="label">Paket <span class="normal-case text-slate-600">(opsional)</span></label>
+                                    <select id="rr-package" class="input" x-model="rentalForm.package_id">
+                                        <option value="">Tanpa Paket</option>
+                                        <template x-for="pkg in ratePackages" :key="pkg.id">
+                                            <option :value="pkg.id" x-text="pkg.name + ' · ' + pkg.duration_label + ' · ' + window.Rebite.rupiah(pkg.price)"></option>
+                                        </template>
+                                    </select>
+                                    <p class="mt-1 text-xs text-rose-400" x-text="fieldError('package_id')" x-show="fieldError('package_id')"></p>
+                                </div>
+
+                                <div>
+                                    <label for="rr-notes" class="label">Catatan <span class="normal-case text-slate-600">(opsional)</span></label>
+                                    <textarea id="rr-notes" rows="2" class="input resize-none" placeholder="Keterangan tambahan untuk kasir" x-model="rentalForm.notes"></textarea>
+                                    <p class="mt-1 text-xs text-rose-400" x-text="fieldError('notes')" x-show="fieldError('notes')"></p>
+                                </div>
+
+                                <div class="flex items-center justify-between rounded-xl border border-white/5 bg-ink-850 px-4 py-3">
+                                    <div>
+                                        <p class="text-[10px] font-bold uppercase tracking-widest text-slate-500">Estimasi Biaya</p>
+                                        <p class="text-[10px] text-slate-600" x-text="(selectedPackage ? selectedPackage.name + ' · ' + selectedPackage.duration_label : 'Tanpa paket') + ' · ' + rentalDurationMinutes + ' menit'"></p>
+                                    </div>
+                                    <p class="text-lg font-extrabold text-brand-300" x-text="rentalPricePreview || '—'"></p>
+                                </div>
+
+                                <p class="rounded-xl bg-rose-500/10 px-3 py-2 text-xs text-rose-200" x-text="error" x-show="error"></p>
+
+                                <button type="submit" class="btn-primary w-full" x-bind:disabled="submitting || rentalDurationMinutes < 60">
+                                    <span x-text="submitting ? 'Mengirim...' : 'Kirim Permintaan Sewa'"></span>
+                                </button>
+
+                                <p class="text-center text-[11px] text-slate-600">
+                                    Durasi minimal 1 jam. Permintaan dikirim ke kasir untuk konfirmasi ketersediaan unit.
+                                </p>
+                            </form>
+                        </template>
                     </div>
                 </div>
+            </div>
+        </section>
+
+        {{-- ================= PERMINTAAN SEWA ================= --}}
+        <section id="rentals" class="scroll-mt-8" aria-label="Permintaan sewa saya">
+            <div class="mb-6">
+                <h2 class="text-2xl font-extrabold text-white sm:text-3xl">Permintaan Sewa Saya</h2>
+                <p class="mt-1 text-sm text-slate-500">
+                    Diajukan lewat tombol <strong class="font-semibold text-white">Ajukan Sewa</strong> pada kartu unit di atas.
+                    Kasir perlu mengonfirmasi sebelum sewa disetujui.
+                </p>
+            </div>
+
+            <div class="grid gap-6 lg:grid-cols-[1fr,320px]">
+                <div class="card overflow-hidden">
+                    <template x-if="rentals.length === 0">
+                        <div class="px-6 py-12 text-center">
+                            <x-icon name="clipboard-list" class="mx-auto h-9 w-9 text-slate-700" />
+                            <p class="mt-4 text-sm font-semibold text-slate-400">Belum ada permintaan sewa.</p>
+                            <p class="mt-1 text-sm text-slate-500">Pilih unit di bagian "Pilih Unit &amp; Jadwal" lalu tekan "Ajukan Sewa".</p>
+                        </div>
+                    </template>
+
+                    <div class="divide-y divide-white/5" x-show="rentals.length > 0">
+                        <template x-for="rental in rentals" :key="rental.rental_code">
+                            <article class="px-6 py-5">
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <h3 class="text-base font-extrabold text-white" x-text="rental.rental_code"></h3>
+                                    <span class="badge" :class="rental.status.badge_class" x-text="rental.status.label"></span>
+                                </div>
+
+                                <div class="mt-2 flex flex-wrap items-center gap-4 text-sm text-slate-400">
+                                    <span class="inline-flex items-center gap-1.5">
+                                        <x-icon name="gamepad-2" class="h-4 w-4" />
+                                        <span x-text="rental.unit_name + ' (' + rental.unit_code + ')'"></span>
+                                    </span>
+                                    <span class="inline-flex items-center gap-1.5 tabular">
+                                        <x-icon name="clock" class="h-4 w-4" />
+                                        <span x-text="rental.start_time_label + ' → ' + rental.end_time_label"></span>
+                                    </span>
+                                    <span class="inline-flex items-center gap-1.5">
+                                        <x-icon name="tags" class="h-4 w-4" />
+                                        <span x-text="rental.package_name ?? 'Tanpa Paket'"></span>
+                                    </span>
+                                    <span class="inline-flex items-center gap-1.5">
+                                        <x-icon name="receipt" class="h-4 w-4" />
+                                        <span x-text="rental.total_price_label"></span>
+                                    </span>
+                                </div>
+
+                                <p class="mt-2 text-sm text-slate-500" x-show="rental.notes">
+                                    <span class="text-slate-600">Catatan:</span>
+                                    <span x-text="rental.notes"></span>
+                                </p>
+                                <p class="mt-2 text-xs text-slate-600">
+                                    <span x-text="'Diajukan ' + rental.created_at_label"></span>
+                                </p>
+                            </article>
+                        </template>
+                    </div>
+                </div>
+
+                <aside class="card h-fit p-6">
+                    <h3 class="text-sm font-extrabold uppercase tracking-widest text-slate-400">Keterangan Status</h3>
+                    <ul class="mt-4 space-y-2 text-sm text-slate-400">
+                        <li class="flex items-center gap-2">
+                            <span class="h-2 w-2 rounded-full bg-amber-400"></span>
+                            Menunggu Konfirmasi — kasir perlu menyetujui permintaan Anda
+                        </li>
+                        <li class="flex items-center gap-2">
+                            <span class="h-2 w-2 rounded-full bg-emerald-400"></span>
+                            Terkonfirmasi — permintaan disetujui
+                        </li>
+                        <li class="flex items-center gap-2">
+                            <span class="h-2 w-2 rounded-full bg-rose-400"></span>
+                            Dibatalkan — permintaan tidak disetujui
+                        </li>
+                        <li class="flex items-center gap-2">
+                            <span class="h-2 w-2 rounded-full bg-slate-400"></span>
+                            Selesai — permintaan telah diproses
+                        </li>
+                    </ul>
+                </aside>
             </div>
         </section>
     </main>

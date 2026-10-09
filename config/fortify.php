@@ -165,6 +165,7 @@ return [
         Features::registration(),
         Features::resetPasswords(),
         Features::updatePasswords(),
+        Features::updateProfileInformation(),
     ],
 
 ];

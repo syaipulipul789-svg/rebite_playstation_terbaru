@@ -73,4 +73,59 @@ class AccountSettingsTest extends TestCase
         $this->actingAs($customer)->get(route('shift.start'))->assertForbidden();
         $this->actingAs($customer)->post(route('shift.start.store'), ['starting_cash' => 100000])->assertForbidden();
     }
+
+    public function test_semua_role_bisa_memperbarui_data_profil(): void
+    {
+        foreach ([$this->makeCashier(), $this->makeCustomer()] as $user) {
+            $username = 'username-baru-'.$user->id;
+
+            $this->actingAs($user)->from(route('account.settings'))
+                ->put(route('user-profile-information.update'), [
+                    'name' => 'Nama Baru',
+                    'username' => $username,
+                    'phone' => '+62 812-9999-000'.$user->id,
+                    'email' => 'baru-'.$user->id.'@example.com',
+                ])->assertRedirect(route('account.settings'))
+                ->assertSessionHas('status', 'profile-information-updated');
+
+            $user->refresh();
+
+            $this->assertSame('Nama Baru', $user->name);
+            $this->assertSame($username, $user->username);
+            $this->assertSame('08129999000'.$user->id, $user->phone);
+            $this->assertSame('baru-'.$user->id.'@example.com', $user->email);
+        }
+    }
+
+    public function test_username_dan_kontak_bentrok_tidak_mengubah_profil(): void
+    {
+        $user = $this->makeCustomer();
+        $taken = $this->makeCustomer('089876543210', ['username' => 'takenuser']);
+
+        $this->actingAs($user)->put(route('user-profile-information.update'), [
+            'name' => $user->name,
+            'username' => $taken->username,
+            'phone' => $user->phone,
+        ])->assertSessionHasErrorsIn('updateProfileInformation', ['username']);
+
+        // Format internasional yang menormalkan ke nomor milik orang lain
+        // tetap harus ditolak, walau tulisan mentahnya berbeda.
+        $this->actingAs($user)->put(route('user-profile-information.update'), [
+            'name' => $user->name,
+            'username' => $user->username,
+            'phone' => '62'.substr($taken->phone, 1),
+        ])->assertSessionHasErrorsIn('updateProfileInformation', ['phone']);
+
+        $this->assertSame($user->fresh()->username, $user->username);
+        $this->assertSame($user->fresh()->name, $user->name);
+        $this->assertSame($user->fresh()->phone, $user->phone);
+    }
+
+    public function test_tamu_tidak_bisa_memperbarui_data_profil(): void
+    {
+        $this->put(route('user-profile-information.update'), [
+            'name' => 'Hacker',
+            'username' => 'hacker',
+        ])->assertRedirect(route('login'));
+    }
 }

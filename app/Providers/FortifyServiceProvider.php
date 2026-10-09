@@ -5,6 +5,7 @@ namespace App\Providers;
 use App\Actions\Fortify\CreateNewUser;
 use App\Actions\Fortify\ResetUserPassword;
 use App\Actions\Fortify\UpdateUserPassword;
+use App\Actions\Fortify\UpdateUserProfileInformation;
 use App\Http\Middleware\EnsureShiftClosedBeforeLogout;
 use App\Http\Responses\CustomerRegisterResponse;
 use App\Http\Responses\LogoutToLoginResponse;
@@ -34,6 +35,7 @@ class FortifyServiceProvider extends ServiceProvider
     {
         Fortify::resetUserPasswordsUsing(ResetUserPassword::class);
         Fortify::updateUserPasswordsUsing(UpdateUserPassword::class);
+        Fortify::updateUserProfileInformationUsing(UpdateUserProfileInformation::class);
 
         // Pendaftaran memakai aksi milik aplikasi sendiri supaya bisa
         // memvalidasi nomor WhatsApp dan membuat akun dengan role CUSTOMER.

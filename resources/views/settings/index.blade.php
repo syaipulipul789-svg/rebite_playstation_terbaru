@@ -18,6 +18,42 @@
             <p class="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-300">Password berhasil diubah.</p>
         @endif
 
+        @if (session('status') === 'profile-information-updated')
+            <p class="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-300">Data profil berhasil diperbarui.</p>
+        @endif
+
+        <div class="card p-5 sm:p-6">
+            <h3 class="font-bold text-white">Data Profil</h3>
+            <p class="mt-1 text-sm text-slate-500">Nama dan kontak yang dipakai untuk pemesanan. Username dipakai untuk masuk ke akun ini.</p>
+
+            <form method="POST" action="{{ route('user-profile-information.update') }}" class="mt-5 space-y-4">
+                @csrf
+                @method('PUT')
+
+                <x-input name="name" label="Nama" :value="old('name', auth()->user()->name)" required />
+                @error('name', 'updateProfileInformation')
+                    <p class="text-xs text-rose-400">{{ $message }}</p>
+                @enderror
+
+                <x-input name="username" label="Username" :value="old('username', auth()->user()->username)" required />
+                @error('username', 'updateProfileInformation')
+                    <p class="text-xs text-rose-400">{{ $message }}</p>
+                @enderror
+
+                <x-input name="phone" label="Nomor WhatsApp" :value="old('phone', auth()->user()->phone)" placeholder="08xxxxxxxxxx" />
+                @error('phone', 'updateProfileInformation')
+                    <p class="text-xs text-rose-400">{{ $message }}</p>
+                @enderror
+
+                <x-input name="email" type="email" label="Email" :value="old('email', auth()->user()->email)" placeholder="Opsional" />
+                @error('email', 'updateProfileInformation')
+                    <p class="text-xs text-rose-400">{{ $message }}</p>
+                @enderror
+
+                <button type="submit" class="btn-primary w-full">Simpan Data Profil</button>
+            </form>
+        </div>
+
         @if (auth()->user()->isStaff())
             <div class="card p-5 sm:p-6">
                 <h3 class="font-bold text-white">Ubah Password</h3>

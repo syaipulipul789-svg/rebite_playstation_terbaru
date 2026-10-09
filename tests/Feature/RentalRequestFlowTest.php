@@ -14,15 +14,16 @@ class RentalRequestFlowTest extends TestCase
         $customer = $this->makeCustomer();
         $unit = $this->makeUnit(['hourly_rate' => 12000]);
 
-        $this->actingAs($customer)->get(route('customer.rentals.index'))
+        $this->actingAs($customer)->get(route('customer.dashboard'))
             ->assertOk()
-            ->assertSee('Ajukan Permintaan Sewa');
+            ->assertSee('Ajukan Sewa')
+            ->assertSee('Permintaan Sewa Saya');
 
         $this->actingAs($customer)->post(route('customer.rentals.store'), [
             'unit_id' => $unit->id,
             'start_time' => now()->addDay()->format('Y-m-d\TH:i'),
             'end_time' => now()->addDay()->addHours(2)->format('Y-m-d\TH:i'),
-        ])->assertRedirect(route('customer.rentals.index'))
+        ])->assertRedirect(route('customer.dashboard'))
             ->assertSessionHas('success');
 
         $request = RentalRequest::query()->firstOrFail();
@@ -33,6 +34,62 @@ class RentalRequestFlowTest extends TestCase
         $this->assertSame(120, $request->duration_minutes);
         $this->assertSame('24000.00', $request->total_price);
         $this->assertSame('12000.00', $request->hourly_rate);
+
+        $this->actingAs($customer)->get(route('customer.dashboard'))
+            ->assertOk()
+            ->assertSee($request->rentalRequestCode());
+    }
+
+    public function test_pengajuan_sewa_dari_modal_json_berhasil(): void
+    {
+        $customer = $this->makeCustomer();
+        $unit = $this->makeUnit(['hourly_rate' => 15000]);
+
+        $this->actingAs($customer)->postJson(route('customer.rentals.store'), [
+            'unit_id' => $unit->id,
+            'start_time' => now()->addDay()->format('Y-m-d\TH:i'),
+            'end_time' => now()->addDay()->addHours(3)->format('Y-m-d\TH:i'),
+            'package_id' => null,
+            'notes' => 'Minta remote ekstra',
+        ])->assertCreated()
+            ->assertJsonStructure([
+                'message',
+                'rental_code',
+                'unit_name',
+                'start_time_label',
+                'end_time_label',
+                'total_price_label',
+                'status' => ['label', 'badge_class'],
+            ]);
+
+        $request = RentalRequest::query()->firstOrFail();
+
+        $this->assertSame('Minta remote ekstra', $request->notes);
+        $this->assertSame(180, $request->duration_minutes);
+    }
+
+    public function test_pengajuan_sewa_yang_bentrok_dibalas_json_error(): void
+    {
+        $customer = $this->makeCustomer();
+        $unit = $this->makeUnit();
+
+        $start = now()->addDay()->startOfHour();
+
+        $this->actingAs($customer)->postJson(route('customer.rentals.store'), [
+            'unit_id' => $unit->id,
+            'start_time' => $start->format('Y-m-d\TH:i'),
+            'end_time' => $start->copy()->addHours(2)->format('Y-m-d\TH:i'),
+        ])->assertCreated();
+
+        $other = $this->makeCustomer('081111111111');
+
+        $this->actingAs($other)->postJson(route('customer.rentals.store'), [
+            'unit_id' => $unit->id,
+            'start_time' => $start->copy()->addHour()->format('Y-m-d\TH:i'),
+            'end_time' => $start->copy()->addHours(3)->format('Y-m-d\TH:i'),
+        ])->assertUnprocessable();
+
+        $this->assertDatabaseCount('rental_requests', 1);
     }
 
     public function test_permintaan_sewa_kurang_dari_satu_jam_ditolak(): void
@@ -142,9 +199,13 @@ class RentalRequestFlowTest extends TestCase
         $maintenance = $this->makeUnit(['status' => UnitStatus::MAINTENANCE, 'code' => 'PS5-SVC']);
         $ready = $this->makeUnit();
 
-        $this->actingAs($customer)->get(route('customer.rentals.index'))
+        $this->actingAs($customer)->get(route('customer.dashboard'))
             ->assertOk()
-            ->assertSee($ready->name)
-            ->assertDontSee($maintenance->name);
+            ->assertViewHas('bookingUnits', function (array $units) use ($maintenance, $ready): bool {
+                $codes = array_column($units, 'code');
+
+                return in_array($ready->code, $codes, true)
+                    && ! in_array($maintenance->code, $codes, true);
+            });
     }
 }

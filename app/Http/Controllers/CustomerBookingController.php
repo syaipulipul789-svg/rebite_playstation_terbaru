@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Enums\UnitStatus;
 use App\Http\Requests\StoreBookingRequest;
 use App\Models\Booking;
+use App\Models\RatePackage;
+use App\Models\RentalRequest;
 use App\Models\Unit;
 use App\Services\BookingService;
 use App\Support\CustomerAvailability;
@@ -34,6 +36,15 @@ class CustomerBookingController extends Controller
             ->orderBy('code')
             ->get();
 
+        $rentalRequests = RentalRequest::query()
+            ->where('user_id', $request->user()->id)
+            ->with(['unit', 'package'])
+            ->orderByDesc('created_at')
+            ->limit(10)
+            ->get()
+            ->map(fn (RentalRequest $rental) => $rental->customerSnapshot())
+            ->all();
+
         return view('customer.dashboard', [
             'units' => $units,
             'stats' => [
@@ -44,6 +55,17 @@ class CustomerBookingController extends Controller
             ],
             'bookingUnits' => CustomerAvailability::bookingUnits($units),
             'myBookings' => $this->myBookings($request),
+            'rentals' => $rentalRequests,
+            'ratePackages' => RatePackage::query()
+                ->orderBy('duration_minutes')
+                ->get()
+                ->map(fn (RatePackage $package) => [
+                    'id' => $package->id,
+                    'name' => $package->name,
+                    'price' => (float) $package->price,
+                    'duration_minutes' => $package->duration_minutes,
+                    'duration_label' => $package->durationLabel(),
+                ]),
         ]);
     }
 

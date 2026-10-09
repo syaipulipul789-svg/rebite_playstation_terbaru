@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\RentalRequestStatus;
+use App\Support\Money;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -87,6 +88,32 @@ class RentalRequest extends Model
     public function rentalRequestCode(): string
     {
         return $this->rental_request_code;
+    }
+
+    /**
+     * Snapshot siap-kirim untuk halaman pelanggan (riwayat & respon JSON
+     * modal "Ajukan Sewa") — bentuknya sama dengan yang dihasilkan saat
+     * permintaan baru dibuat.
+     *
+     * @return array<string, mixed>
+     */
+    public function customerSnapshot(): array
+    {
+        return [
+            'rental_code' => $this->rentalRequestCode(),
+            'unit_name' => $this->unit?->name,
+            'unit_code' => $this->unit?->code,
+            'package_name' => $this->package_name,
+            'start_time_label' => $this->start_time->format('d M Y H:i'),
+            'end_time_label' => $this->end_time->format('d M Y H:i'),
+            'total_price_label' => Money::format($this->total_price),
+            'notes' => $this->notes,
+            'created_at_label' => $this->created_at->diffForHumans(),
+            'status' => [
+                'label' => $this->status->label(),
+                'badge_class' => $this->status->badgeClass(),
+            ],
+        ];
     }
 
     public function hasRunningRentalSession(): bool

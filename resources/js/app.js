@@ -3,13 +3,18 @@ import axios from 'axios';
 import { createIcons } from 'lucide';
 import * as LucideIcons from './icons';
 
-import './unit-grid';
+/* Modul pelanggan (public & area customer) */
 import './customer-display';
 import './customer-booking';
 import './customer-order';
 import './table-order';
-import './barcode-labels';
+
+/* Modul operasional kasir */
+import './unit-grid';
 import './reconciliation';
+
+/* Modul owner */
+import './barcode-labels';
 import './charts';
 
 window.axios = axios;

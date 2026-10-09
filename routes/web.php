@@ -84,9 +84,12 @@ Route::middleware(['auth', 'role.customer'])->prefix('customer')->name('customer
         ->middleware('throttle:60,1')
         ->name('bookings.status');
 
-    // Permintaan sewa unit sesuai jadwal yang diinginkan pelanggan.
-    Route::get('/rentals', [CustomerRentalRequestController::class, 'index'])->name('rentals.index');
-    Route::post('/rentals', [CustomerRentalRequestController::class, 'store'])->name('rentals.store');
+    // Permintaan sewa unit sesuai jadwal yang diinginkan pelanggan. Formulir
+    // dan riwayatnya berada di dashboard ("Pilih Unit & Jadwal"), jadi hanya
+    // endpoint pengirimannya yang dipakai (dukung JSON dari modal Alpine).
+    Route::post('/rentals', [CustomerRentalRequestController::class, 'store'])
+        ->middleware('throttle:12,1')
+        ->name('rentals.store');
 });
 
 /*
